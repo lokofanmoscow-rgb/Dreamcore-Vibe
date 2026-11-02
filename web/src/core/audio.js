@@ -147,53 +147,66 @@ export class AudioSystem {
     g.exponentialRampToValueAtTime(0.0001, t + a + d);
   }
 
+  // Shoe on a hard floor: a soft heel knock followed ~70 ms later by the toe,
+  // energy mostly 150-700 Hz with a faint click and some room echo.
+  // Grass, dirt and clouds are silent on purpose.
   footstep(surface = 'grass', speed = 3) {
     if (!this.ctx || this.paused) return;
-    const ctx = this.ctx, t = ctx.currentTime;
     const cfg = {
-      grass: { f: 2600, q: 0.6, type: 'bandpass', g: 0.16, d: 0.16, thump: 0.0, verb: 0.02 },
-      dirt: { f: 1300, q: 0.9, type: 'bandpass', g: 0.2, d: 0.12, thump: 0.08, verb: 0.03 },
-      wood: { f: 900, q: 1.2, type: 'bandpass', g: 0.14, d: 0.07, thump: 0.35, verb: 0.35 },
-      concrete: { f: 2000, q: 1.0, type: 'bandpass', g: 0.16, d: 0.06, thump: 0.12, verb: 0.08 },
-      tile: { f: 3200, q: 1.4, type: 'bandpass', g: 0.14, d: 0.05, thump: 0.18, verb: 0.55 },
-      water: { f: 900, q: 0.7, type: 'bandpass', g: 0.35, d: 0.28, thump: 0.05, verb: 0.4 },
-      cloud: { f: 500, q: 0.5, type: 'lowpass', g: 0.15, d: 0.22, thump: 0.0, verb: 0.3 },
-      rubber: { f: 600, q: 0.8, type: 'lowpass', g: 0.2, d: 0.08, thump: 0.25, verb: 0.05 },
-    }[surface] || { f: 2000, q: 1, type: 'bandpass', g: 0.15, d: 0.1, thump: 0.1, verb: 0.1 };
-    const vary = 0.85 + Math.random() * 0.3;
-    const src = this.noiseSource();
-    const filt = ctx.createBiquadFilter();
-    filt.type = cfg.type;
-    filt.frequency.value = cfg.f * vary;
-    filt.Q.value = cfg.q;
-    const g = ctx.createGain();
-    const loud = cfg.g * (0.7 + Math.min(1, speed / 5) * 0.5);
-    this.env(g, t, 0.008, loud, cfg.d * vary);
-    src.connect(filt).connect(g);
-    g.connect(this.master);
-    if (cfg.verb) {
-      const s = ctx.createGain(); s.gain.value = cfg.verb; g.connect(s).connect(this.reverbSend);
+      tile: { f: 330, f2: 540, vol: 0.13, verb: 0.55, click: 0.5, body: 0.35 },
+      wood: { f: 240, f2: 400, vol: 0.14, verb: 0.3, click: 0.35, body: 0.6 },
+      concrete: { f: 300, f2: 480, vol: 0.11, verb: 0.12, click: 0.4, body: 0.35 },
+      rubber: { f: 200, f2: 300, vol: 0.08, verb: 0.05, click: 0.0, body: 0.5 },
+    }[surface];
+    if (surface === 'water') { this.wadeStep(speed); return; }
+    if (!cfg) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const k = (0.75 + Math.min(1, speed / 5) * 0.4) * (0.85 + Math.random() * 0.3);
+    this.knock(t, cfg.f * (0.93 + Math.random() * 0.14), cfg.vol * k, cfg, 0.045);
+    this.knock(t + 0.06 + Math.random() * 0.025, cfg.f2 * (0.93 + Math.random() * 0.14), cfg.vol * k * 0.45, cfg, 0.035);
+  }
+
+  knock(t, f, vol, cfg, len) {
+    const ctx = this.ctx;
+    const out = ctx.createGain();
+    out.gain.value = 1;
+    out.connect(this.master);
+    if (cfg.verb) { const s = ctx.createGain(); s.gain.value = cfg.verb; out.connect(s).connect(this.reverbSend); }
+    // body: filtered noise
+    const n = this.noiseSource();
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = 1.3;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3800;
+    const g = ctx.createGain(); this.env(g, t, 0.003, vol, len);
+    n.connect(bp).connect(lp).connect(g).connect(out);
+    n.start(t, Math.random() * 1.5, len + 0.05);
+    // low thump
+    if (cfg.body) {
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(f * 0.5, t); o.frequency.exponentialRampToValueAtTime(f * 0.3, t + len);
+      const og = ctx.createGain(); this.env(og, t, 0.002, vol * cfg.body, len * 0.9);
+      o.connect(og).connect(out);
+      o.start(t); o.stop(t + len + 0.05);
     }
-    src.start(t, Math.random() * 1.5, cfg.d + 0.1);
-    if (surface === 'water') {
-      // splashy second burst
-      const s2 = this.noiseSource();
-      const f2 = ctx.createBiquadFilter(); f2.type = 'highpass'; f2.frequency.value = 2500;
-      const g2 = ctx.createGain(); this.env(g2, t + 0.05, 0.02, 0.12, 0.25);
-      s2.connect(f2).connect(g2).connect(this.master);
-      s2.start(t + 0.05, Math.random(), 0.4);
+    // faint sole click
+    if (cfg.click) {
+      const c = this.noiseSource();
+      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2600;
+      const cg = ctx.createGain(); this.env(cg, t, 0.001, vol * cfg.click * 0.9, 0.012);
+      c.connect(hp).connect(cg).connect(out);
+      c.start(t, Math.random(), 0.03);
     }
-    if (cfg.thump) {
-      const o = ctx.createOscillator();
-      o.type = 'sine';
-      o.frequency.setValueAtTime(140 * vary, t);
-      o.frequency.exponentialRampToValueAtTime(55, t + 0.09);
-      const og = ctx.createGain();
-      this.env(og, t, 0.005, cfg.thump * loud * 2, 0.1);
-      o.connect(og).connect(this.master);
-      if (cfg.verb) { const s = ctx.createGain(); s.gain.value = cfg.verb; og.connect(s).connect(this.reverbSend); }
-      o.start(t); o.stop(t + 0.2);
-    }
+    setTimeout(() => out.disconnect(), 1500);
+  }
+
+  // soft slosh for steps in water
+  wadeStep(speed = 3) {
+    const ctx = this.ctx, t = ctx.currentTime;
+    const n = this.noiseSource();
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 600 + Math.random() * 300; bp.Q.value = 0.8;
+    const g = ctx.createGain(); this.env(g, t, 0.04, 0.06 * (0.7 + Math.min(1, speed / 4) * 0.4), 0.3);
+    n.connect(bp).connect(g).connect(this.master);
+    const s = ctx.createGain(); s.gain.value = 0.35; g.connect(s).connect(this.reverbSend);
+    n.start(t, Math.random(), 0.4);
   }
 
   chime(baseFreq = 660, vol = 0.18) {
@@ -217,12 +230,9 @@ export class AudioSystem {
   doorCreak() {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;
-    const c = this.noiseSource();
-    const cf = ctx.createBiquadFilter(); cf.type = 'bandpass'; cf.frequency.value = 2400; cf.Q.value = 2;
-    const cg = ctx.createGain(); this.env(cg, t, 0.003, 0.05, 0.05);
-    c.connect(cf).connect(cg).connect(this.master);
-    c.start(t, 0, 0.08);
-    this.chime(523.25, 0.035);
+    // only a very soft, slow chime far in the background
+    this.chime(392.0, 0.018);
+    void t;
   }
 
   // kept for compatibility: the door transition is silent now (music cross-fades)
@@ -295,7 +305,7 @@ export class AudioSystem {
     for (let i = 0; i < 3; i++) {
       const c = this.noiseSource();
       const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 3;
-      const g = ctx.createGain(); this.env(g, t + i * 0.09, 0.003, 0.25, 0.06);
+      const g = ctx.createGain(); this.env(g, t + i * 0.09, 0.003, 0.06, 0.06);
       c.connect(f).connect(g).connect(this.master);
       c.start(t + i * 0.09, Math.random(), 0.1);
     }

@@ -7,6 +7,8 @@ export function resolveCollisions(pos, colliders, r = PLAYER_R) {
     let moved = false;
     for (const c of colliders) {
       if (c.enabled === false) continue;
+      // colliders with a height range only block a body that overlaps it
+      if (c.y1 !== undefined && (pos.y >= c.y1 - 0.3 || pos.y + 1.7 <= c.y0)) continue;
       if (c.type === 'circle') {
         const dx = pos.x - c.x, dz = pos.z - c.z;
         const rr = c.r + r;
@@ -141,7 +143,7 @@ export class Player {
     if (lv) {
       resolveCollisions(this.pos, lv.colliders);
       applyBounds(this.pos, lv.bounds);
-      const gy = lv.groundHeight(this.pos.x, this.pos.z);
+      const gy = lv.groundHeight(this.pos.x, this.pos.z, this.pos.y);
       if (this.grounded && gy < this.pos.y - 0.45) {
         // walked off a ledge: fall
         this.grounded = false;

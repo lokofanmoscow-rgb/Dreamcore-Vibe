@@ -51,7 +51,6 @@ class Game {
       if (!this.level) return;
       this.audio.splash(speed / 4.5);
       if (this.level.waterFx) this.level.waterFx.splash(pos.x, wl, pos.z, speed / 4.5);
-      this.vibrate(20);
     };
     this.player.onJump = (pos, inWater) => {
       if (inWater && this.level && this.level.waterFx) {
@@ -113,7 +112,6 @@ class Game {
     if (level.door) {
       level.door.onOpen = () => {
         this.audio.doorCreak();
-        this.vibrate(30);
       };
     }
     for (const d of level.decoys) d.onLocked = () => this.audio.locked();
@@ -206,7 +204,6 @@ class Game {
     this.state = 'transition';
     this.input.enabled = false;
     this.input.reset();
-    this.vibrate(60);
     let next = this.levelIndex + 1;
     if (next >= LEVELS.length) { next = 0; progress.loops = (progress.loops || 0) + 1; }
     progress.unlocked = Math.max(progress.unlocked || 1, Math.min(LEVELS.length, next + 1));

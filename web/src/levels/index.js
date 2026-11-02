@@ -30,8 +30,8 @@ export const LEVELS = [
   },
   {
     id: 'pool', title: 'Бассейны', music: 'aqua', ambience: 'pool', build: pool.build,
-    card: 'linear-gradient(160deg, #ffffff 0%, #c8f4fb 45%, #5ad0e0 100%)',
-    grade: { contrast: 1.06, tint: [1.02, 1.0, 0.96], vignette: 0.34, bloomStrength: 0.45, bloomThreshold: 0.88, exposure: 1.0, distortion: 0.08, saturation: 1.0 },
+    card: 'linear-gradient(160deg, #f4fbfa 0%, #b9cfca 50%, #2c4a46 100%)',
+    grade: { saturation: 0.95, contrast: 1.08, tint: [0.97, 1.02, 1.02], vignette: 0.42, bloomStrength: 0.6, bloomThreshold: 0.8, exposure: 1.0, distortion: 0.12, grain: 0.04 },
   },
   {
     id: 'clouds', title: 'Над облаками', music: 'heaven', ambience: 'clouds', build: clouds.build,
