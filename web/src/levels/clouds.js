@@ -82,10 +82,10 @@ export function build(ctx, def) {
   const q = ctx.q;
   const noise = makeNoise2D(3);
   const rnd = mulberry32(8);
-  const R = 62;
+  const R = 150;
 
   // stairs to the sky
-  const STAIR = { x: 0, z: -18, dirZ: -1, steps: 22, rise: 0.32, run: 0.75, width: 3.0 };
+  const STAIR = { x: 0, z: -95, dirZ: -1, steps: 30, rise: 0.32, run: 0.75, width: 3.0 };
   const stairTopZ = STAIR.z - STAIR.steps * STAIR.run;
   const PLAT = { x0: -3, x1: 3, z0: stairTopZ - 6, z1: stairTopZ, y: STAIR.steps * STAIR.rise };
 
@@ -111,7 +111,7 @@ export function build(ctx, def) {
 
   const ctex = cloudTexture();
   const terrain = new Terrain({
-    size: 200, segments: 140, fieldRes: 128, height,
+    size: 400, segments: 200, fieldRes: 160, height,
     grass: () => 0, path: () => 0, tint: () => 0.5,
     groundTex: ctex, pathTex: ctex, groundColor: '#fff4fa', roughness: 1.0, groundRepeat: 0.1,
   });
@@ -137,9 +137,9 @@ export function build(ctx, def) {
   // puffs
   const puffMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1.0, emissive: '#ffd6e6', emissiveIntensity: 0.06 });
   const puffs = [];
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 90; i++) {
     const a = rnd() * Math.PI * 2;
-    const r = 18 + rnd() * 55;
+    const r = 18 + rnd() * (R - 12);
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
     if (Math.abs(x) < 6 && z < 0 && z > PLAT.z0 - 6) continue;
     if (Math.hypot(x, z - 22) < 10 || Math.abs(Math.hypot(x, z - 6) - 11) < 4) continue;
@@ -155,7 +155,7 @@ export function build(ctx, def) {
   // floating puffs in the sky
   for (let i = 0; i < 14; i++) {
     const a = rnd() * Math.PI * 2;
-    const r = 90 + rnd() * 160;
+    const r = 180 + rnd() * 200;
     const m = new THREE.Mesh(puff(rnd, 6 + rnd() * 8, 7), puffMat);
     m.position.set(Math.cos(a) * r, 10 + rnd() * 45, Math.sin(a) * r);
     m.userData.bob = rnd() * 6;
@@ -181,6 +181,25 @@ export function build(ctx, def) {
     colGeo.push(cyl(0.42, 0.48, h, x, y + h / 2 + 0.3, z, 18), bx(1.2, 0.3, 1.2, x, y + 0.15, z));
     if (h > 6) colGeo.push(bx(1.2, 0.35, 1.2, x, y + h + 0.45, z));
     L.collide(circleCollider(x, z, 0.6));
+  }
+  // more ruined colonnades and arches across the clouds
+  for (let g = 0; g < 7; g++) {
+    const a = g * 0.9 + 0.4, r = 45 + (g % 3) * 30;
+    const gx = Math.cos(a) * r, gz = Math.sin(a) * r;
+    if (Math.abs(gx) < 10 && gz < -60) continue;
+    for (let k = 0; k < 6; k++) {
+      const x = gx + (k % 3) * 4.2 - 4.2, z = gz + Math.floor(k / 3) * 6 - 3;
+      const h = rnd() < 0.35 ? 1.5 + rnd() * 2 : 5.5;
+      const y = height(x, z) - 0.3;
+      colGeo.push(cyl(0.38, 0.44, h, x, y + h / 2 + 0.3, z, 16), bx(1.1, 0.3, 1.1, x, y + 0.15, z));
+      if (h > 5) colGeo.push(bx(1.1, 0.3, 1.1, x, y + h + 0.45, z));
+      L.collide(circleCollider(x, z, 0.55));
+    }
+    if (g % 2 === 0) {
+      const y = height(gx, gz + 9);
+      colGeo.push(bx(0.8, 4.5, 0.8, gx - 2, y + 2.25, gz + 9), bx(0.8, 4.5, 0.8, gx + 2, y + 2.25, gz + 9), bx(5, 0.8, 0.8, gx, y + 4.9, gz + 9));
+      L.collide(circleCollider(gx - 2, gz + 9, 0.5), circleCollider(gx + 2, gz + 9, 0.5));
+    }
   }
   // stairs
   for (let k = 0; k < STAIR.steps; k++) {
@@ -210,10 +229,10 @@ export function build(ctx, def) {
   L.add(rb);
 
   // doors: decoys stand on the clouds, the real one waits at the top of the stairs
-  const decoys = [[-22, 8, 1.2], [24, -4, -1.6], [-12, 30, 2.6], [20, 26, -2.4]];
-  const pastel = ['#ffd1e8', '#d7d0ff', '#fff2b8', '#c8f2e6'];
+  const decoys = [[-22, 8, 1.2], [24, -4, -1.6], [-70, -40, 2.6], [80, 50, -2.4], [-110, 60, 1.8], [100, -90, -0.8]];
+  const pastel = ['#ffd1e8', '#d7d0ff', '#fff2b8', '#c8f2e6', '#ffd1e8', '#d7d0ff'];
   decoys.forEach(([x, z, r], i) => L.makeDecoy({ color: pastel[i], frameColor: '#ffffff' }, x, height(x, z) - 0.05, z, r));
-  L.makeDoor({ color: '#ffffff', frameColor: '#ffe6f2', glow: '#fff0d6', style: 'panel' }, 0, PLAT.y, PLAT.z0 + 2.2, 0);
+  L.makeDoor({ color: '#ffffff', frameColor: '#ffe6f2', glow: '#fff0d6', style: 'panel', beacon: true }, 0, PLAT.y, PLAT.z0 + 2.2, 0);
 
   const sparkle = floatingMotes(Math.round(220 * q.particles), { color: '#fff0f8', size: 0.07, area: 16, height: 7, speed: 0.1, opacity: 0.8, tex: glowTexture() });
   L.add(sparkle);

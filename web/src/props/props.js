@@ -562,3 +562,14 @@ export function concretePad(w, d, tint = '#d8d2c4') {
   m.receiveShadow = true;
   return m;
 }
+
+export function scarecrow() {
+  const g = new THREE.Group();
+  const wood = std('#6b4a32', 0.9);
+  g.add(mesh([bx(0.1, 2.4, 0.1, 0, 1.2, 0), bx(1.6, 0.08, 0.08, 0, 1.75, 0)], wood));
+  g.add(mesh([bx(0.62, 0.75, 0.32, 0, 1.55, 0)], std('#c8564a', 0.9)));
+  g.add(mesh([bx(0.2, 0.5, 0.25, -0.62, 1.7, 0), bx(0.2, 0.5, 0.25, 0.62, 1.7, 0)], std('#c8564a', 0.9)));
+  g.add(mesh([sph(0.2, 0, 2.15, 0, 12, 10)], std('#e8d8a8', 0.9)));
+  g.add(mesh([cyl(0.38, 0.38, 0.03, 0, 2.3, 0, 16), cyl(0.18, 0.2, 0.2, 0, 2.4, 0, 12)], std('#d8b860', 0.9)));
+  return g;
+}

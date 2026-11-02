@@ -6,6 +6,7 @@ import { Player } from './core/player.js';
 import { AudioSystem } from './core/audio.js';
 import { setMaxAnisotropy } from './core/textures.js';
 import { LEVELS } from './levels/index.js';
+import { WaterFX } from './core/waterfx.js';
 
 const $ = (id) => document.getElementById(id);
 const bridge = window.AndroidBridge || null;
@@ -28,9 +29,36 @@ class Game {
     this.audio.setVolumes(settings.music, settings.sfx);
     this.input = new Input($('touch-layer'), { stickEl: $('stick'), knobEl: $('stick-knob') });
     this.player = new Player(this.camera);
-    this.player.onStep = (pos, speed) => {
+    this.player.onStep = (pos, speed, inWater) => {
       if (!this.level) return;
-      this.audio.footstep(this.level.surface(pos.x, pos.z), speed);
+      if (inWater) {
+        this.audio.footstep('water', speed);
+        const wl = this.level.waterLevel(pos.x, pos.z);
+        if (this.level.waterFx) this.level.waterFx.ripple(pos.x, wl, pos.z, 0.7 + speed * 0.08);
+      } else {
+        this.audio.footstep(this.level.surface(pos.x, pos.z), speed);
+      }
+    };
+    this.player.onLand = (pos, impact, inWater) => {
+      if (!this.level) return;
+      if (inWater) {
+        this.audio.splash(impact / 5);
+      } else if (impact > 2) {
+        this.audio.land(this.level.surface(pos.x, pos.z), impact);
+      }
+    };
+    this.player.onWaterEnter = (pos, speed, wl) => {
+      if (!this.level) return;
+      this.audio.splash(speed / 4.5);
+      if (this.level.waterFx) this.level.waterFx.splash(pos.x, wl, pos.z, speed / 4.5);
+      this.vibrate(20);
+    };
+    this.player.onJump = (pos, inWater) => {
+      if (inWater && this.level && this.level.waterFx) {
+        const wl = this.level.waterLevel(pos.x, pos.z);
+        this.level.waterFx.splash(pos.x, wl, pos.z, 0.45);
+        this.audio.splash(0.4);
+      }
     };
     this.state = 'boot';
     this.level = null;
@@ -63,7 +91,7 @@ class Game {
 
   // ------------------------------------------------------------------ levels
   ctx() {
-    return { q: quality(), renderer: this.renderer, camera: this.camera };
+    return { q: quality(), qualityName: settings.quality, renderer: this.renderer, camera: this.camera };
   }
 
   loadLevel(index) {
@@ -75,6 +103,7 @@ class Game {
     const def = LEVELS[index];
     const level = def.build(this.ctx(), def);
     level.batchStatic();
+    if (level.waterLevel) level.waterFx = new WaterFX(level.scene);
     this.level = level;
     this.renderer.applyGrade(level.grade);
     this.camera.far = level.far || 1000;
@@ -148,8 +177,8 @@ class Game {
       progress.hinted = true;
       saveProgress();
       this.showHint(isMobile || this.input.usedTouch
-        ? 'левый палец — идти   ·   правый — смотреть'
-        : 'WASD — идти   ·   мышь — смотреть   ·   Shift — бежать');
+        ? 'левый палец — идти   ·   правый — смотреть   ·   ⬆ — прыжок'
+        : 'WASD — идти   ·   мышь — смотреть   ·   Shift — бежать   ·   пробел — прыжок');
     }
   }
 
@@ -177,7 +206,6 @@ class Game {
     this.state = 'transition';
     this.input.enabled = false;
     this.input.reset();
-    this.audio.whoosh();
     this.vibrate(60);
     let next = this.levelIndex + 1;
     if (next >= LEVELS.length) { next = 0; progress.loops = (progress.loops || 0) + 1; }
@@ -263,6 +291,13 @@ class Game {
     tap('btn-settings', () => { this.audio.click(); this.openSettings('menu'); });
     tap('btn-exit', () => { if (bridge) bridge.exitApp(); });
     tap('btn-pause', () => { this.audio.click(); this.pause(); });
+    const jb = $('btn-jump');
+    const jump = (e) => { e.preventDefault(); e.stopPropagation(); this.audio.unlock(); this.input.queueJump(); jb.classList.add('down'); };
+    const up = () => jb.classList.remove('down');
+    jb.addEventListener('touchstart', jump, { passive: false });
+    jb.addEventListener('touchend', up);
+    jb.addEventListener('mousedown', jump);
+    jb.addEventListener('mouseup', up);
     tap('btn-resume', () => { this.audio.click(); this.resume(); });
     tap('btn-pause-settings', () => { this.audio.click(); this.openSettings('pause'); });
     tap('btn-to-menu', () => { this.audio.click(); this.toMenu(); });
@@ -395,6 +430,7 @@ class Game {
         this.audio.setHum(1 - Math.min(1, d.distance / 22));
       }
       for (const x of lv.decoys) x.update(dt, this.player.pos);
+      this.audio.setWade(this.player.inWater ? this.player.speed / 4 : 0);
     } else if (this.state === 'menu') {
       this.menuTime += dt;
       const m = lv.menuCam || { x: lv.spawn.x, z: lv.spawn.z, yaw: lv.spawn.yaw, y: 1.7, pitch: 0.05 };
@@ -413,7 +449,11 @@ class Game {
       this.player.updateCamera(dt, 0);
       if (lv.door) lv.door.update(dt, this.player.pos);
     }
-    if (this.state !== 'paused') lv.update(dt, this.player);
+    if (this.state !== 'paused') {
+      lv.update(dt, this.player);
+      if (lv.waterFx) lv.waterFx.update(dt);
+    }
+    if (this.state !== 'playing') this.audio.setWade(0);
     this.audio.update(dt);
     if (skipRender) return;
     this.renderer.render(lv.scene, this.camera, dt);

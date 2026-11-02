@@ -209,6 +209,7 @@ export class LevelBase {
     const seenTex = new Set();
     this.scene.traverse((o) => {
       if (o.geometry) o.geometry.dispose();
+      if (o.customDepthMaterial) o.customDepthMaterial.dispose();
       if (o.material) {
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const m of mats) {

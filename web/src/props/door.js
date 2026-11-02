@@ -52,6 +52,7 @@ export class Door {
     openAngle = 1.85,
     roughness = 0.55,
     locked = false,
+    beacon = false,
   } = {}) {
     this.locked = locked;
     this.shake = 0;
@@ -244,6 +245,24 @@ export class Door {
       this.sparkles = new THREE.Points(g, m);
       this.sparkles.frustumCulled = false;
       group.add(this.sparkles);
+    }
+
+    // a faint pillar of light, so the door can be found in very large levels
+    if (beacon) {
+      const bm = new THREE.ShaderMaterial({
+        uniforms: { uColor: { value: this.glowColor.clone() }, uTime: this.uniforms.uTime },
+        vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: `uniform vec3 uColor; uniform float uTime; varying vec2 vUv;
+          void main(){
+            float a = (1.0 - vUv.y) * (1.0 - vUv.y) * smoothstep(0.0, 0.05, vUv.y);
+            a *= 0.75 + 0.25 * sin(vUv.y * 30.0 - uTime * 1.5);
+            gl_FragColor = vec4(uColor * a * 0.32, 1.0);
+          }`,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
+      });
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.45, 80, 16, 1, true).translate(0, 40 + height, 0), bm);
+      beam.renderOrder = 11;
+      group.add(beam);
     }
 
     this._local = new THREE.Vector3();

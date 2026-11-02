@@ -1,9 +1,10 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LevelBase } from './common.js';
 import { Terrain, grassLayers } from '../core/terrain.js';
-import { makeNoise2D, fbm2, smoothstep, mulberry32 } from '../core/noise.js';
+import { makeNoise2D, fbm2, smoothstep } from '../core/noise.js';
 import { sunflowerHeadTexture, leafTexture, dirtTexture, leafyTexture } from '../core/textures.js';
-import { boxCollider, bench } from '../props/props.js';
+import { bench, scarecrow } from '../props/props.js';
 
 export const skyOpts = {
   top: '#2f78c8', mid: '#5aa3dc', horizon: '#a9d3ec', midHeight: 0.35,
@@ -13,6 +14,9 @@ export const skyOpts = {
   moonColor: '#e9ecf7',
 };
 
+const SX = 0.95, SZ = 0.75; // row spacing / plant spacing
+const H0 = 1.9;             // nominal stem height of the body geometry
+
 function headGeometry(R = 0.34, rings = 6, segs = 22, cup = 0.5) {
   const pos = [], uv = [], idx = [];
   pos.push(0, 0, 0.02); uv.push(0.5, 0.5);
@@ -20,8 +24,7 @@ function headGeometry(R = 0.34, rings = 6, segs = 22, cup = 0.5) {
     const rr = (r / rings) * R;
     for (let s = 0; s < segs; s++) {
       const a = (s / segs) * Math.PI * 2;
-      const x = Math.cos(a) * rr, y = Math.sin(a) * rr;
-      pos.push(x, y, -cup * rr * rr + (r === 1 ? 0.015 : 0));
+      pos.push(Math.cos(a) * rr, Math.sin(a) * rr, -cup * rr * rr + (r === 1 ? 0.015 : 0));
       uv.push(0.5 + 0.5 * (rr / R) * Math.cos(a), 0.5 + 0.5 * (rr / R) * Math.sin(a));
     }
   }
@@ -41,41 +44,161 @@ function headGeometry(R = 0.34, rings = 6, segs = 22, cup = 0.5) {
   return g;
 }
 
-function leafGeometry() {
+function leafGeometry(y, yaw) {
   const g = new THREE.PlaneGeometry(0.32, 0.42, 1, 3);
   g.translate(0, 0.21, 0);
   const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    const y = p.getY(i);
-    p.setZ(i, (y * y) * 0.9);
-  }
+  for (let i = 0; i < p.count; i++) { const yy = p.getY(i); p.setZ(i, yy * yy * 0.9); }
   g.rotateX(-1.0);
+  g.rotateY(yaw);
+  g.translate(0, y, 0);
   g.computeVertexNormals();
   return g;
 }
 
-// gentle wind sway shared by all sunflower parts (world space, after instancing)
-function swayMaterial(mat, uniforms, amount = 0.06) {
+function bodyGeometry(leaves) {
+  const stem = new THREE.CylinderGeometry(0.022, 0.032, H0, 5, 1, true).translate(0, H0 / 2, 0);
+  if (!leaves) return stem;
+  const parts = [stem.toNonIndexed()];
+  const n = leaves;
+  for (let k = 0; k < n; k++) parts.push(leafGeometry(H0 * (0.3 + k * (0.42 / n)), k * 2.3 + 0.4).toNonIndexed());
+  return mergeGeometries(parts);
+}
+
+// all sunflower placement happens in the vertex shader on a world grid around
+// the camera, so the field is endless and never needs to be rebuilt
+const plantGLSL = /* glsl */`
+  uniform vec2 uCamCell, uGrid, uSpacing, uFieldMin, uFieldSize;
+  uniform vec3 uCam;
+  uniform vec4 uRange;     // inner radius, outer radius, jitter, scale
+  uniform float uStride, uTime, uIsHead;
+  uniform sampler2D uField;
+  attribute vec2 aCell;
+  varying float vPlantShade;
+  float hsh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  mat3 rotY(float a) { float c = cos(a), s = sin(a); return mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c); }
+  mat3 rotX(float a) { float c = cos(a), s = sin(a); return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c); }
+  mat3 rotZ(float a) { float c = cos(a), s = sin(a); return mat3(c, s, 0.0, -s, c, 0.0, 0.0, 0.0, 1.0); }
+  void plant(out vec3 base, out mat3 R, out float sc, out vec3 top, out vec2 sway) {
+    vec2 cell = uCamCell + (aCell - floor(uGrid * 0.5)) * uStride;
+    float r1 = hsh(cell), r2 = hsh(cell + 17.31), r3 = hsh(cell + 41.77), r4 = hsh(cell + 73.13);
+    vec2 xz = cell * uSpacing + vec2(uSpacing.x * 0.5, 0.0) + (vec2(r1, r2) - 0.5) * vec2(0.24, 0.32);
+    vec2 fuv = (xz - uFieldMin) / uFieldSize;
+    vec4 f = texture2D(uField, fuv);
+    float inside = step(0.0, fuv.x) * step(fuv.x, 1.0) * step(0.0, fuv.y) * step(fuv.y, 1.0);
+    float d = length(xz - uCam.xz);
+    float th = (r3 - 0.5) * uRange.z;
+    float alive = step(uRange.x + th, d) * step(d, uRange.y + th) * step(f.b, 0.22) * inside;
+    float hgt = 1.55 + r4 * 0.7;
+    base = vec3(xz.x, f.r, xz.y);
+    vec3 tilt = vec3((r2 - 0.5) * 0.08, 0.0, (r1 - 0.5) * 0.08);
+    top = base + vec3(tilt.z * -hgt * 0.5, hgt, tilt.x * hgt * 0.5);
+    float sw = sin(uTime * 1.2 + xz.x * 0.35 + xz.y * 0.22) + 0.4 * sin(uTime * 2.3 + xz.y * 0.9);
+    sway = vec2(sw * 0.05, sw * 0.025);
+    vPlantShade = 0.85 + r3 * 0.3;
+    if (uIsHead > 0.5) {
+      R = rotY((r3 - 0.5) * 0.6) * rotX(-0.25 - r2 * 0.35) * rotZ((r4 - 0.5) * 0.4);
+      sc = alive * (0.85 + r1 * 0.35) * uRange.w;
+    } else {
+      R = rotY(r1 * 6.2831) * rotX(tilt.x) * rotZ(tilt.z);
+      sc = alive * hgt / ${H0.toFixed(2)};
+    }
+  }`;
+
+const plantTransform = /* glsl */`
+  vec3 transformed;
+  if (uIsHead > 0.5) {
+    transformed = pTop + pR * (position * pSc);
+    transformed.xz += pSway * step(0.001, pSc);
+  } else {
+    vec3 lp = position * pSc;
+    transformed = pBase + pR * lp;
+    float swk = clamp(lp.y / 2.2, 0.0, 1.0);
+    transformed.xz += pSway * swk * swk;
+  }`;
+const plantCall = 'vec3 pBase, pTop; mat3 pR; float pSc; vec2 pSway;\n plant(pBase, pR, pSc, pTop, pSway);';
+
+function injectPlant(mat, uniforms, isHead, depth = false) {
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = uniforms.uTime;
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;')
-      .replace('#include <project_vertex>', `
-        vec4 mvPosition = vec4( transformed, 1.0 );
-        #ifdef USE_INSTANCING
-          mvPosition = instanceMatrix * mvPosition;
-          float hAbove = max(0.0, mvPosition.y - instanceMatrix[3].y);
-          float sw = sin(uTime * 1.2 + instanceMatrix[3].x * 0.35 + instanceMatrix[3].z * 0.22)
-                   + 0.4 * sin(uTime * 2.3 + instanceMatrix[3].z * 0.9);
-          mvPosition.x += sw * ${amount.toFixed(3)} * hAbove * hAbove * 0.25;
-          mvPosition.z += sw * ${(amount * 0.5).toFixed(3)} * hAbove * hAbove * 0.25;
-        #endif
-        mvPosition = modelViewMatrix * mvPosition;
-        gl_Position = projectionMatrix * mvPosition;
-      `);
+    Object.assign(sh.uniforms, uniforms);
+    sh.uniforms.uIsHead = { value: isHead ? 1 : 0 };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + plantGLSL);
+    if (depth) {
+      sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', plantCall + plantTransform);
+    } else {
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <beginnormal_vertex>', plantCall + '\n vec3 objectNormal = pR * normal;')
+        .replace('#include <begin_vertex>', plantTransform);
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vPlantShade;')
+        .replace('#include <color_fragment>', `#include <color_fragment>
+          diffuseColor.rgb *= vPlantShade;
+          ${isHead ? `if (!gl_FrontFacing) {
+            float rr = length(vMapUv - 0.5);
+            diffuseColor.rgb = mix(vec3(0.24, 0.38, 0.14), diffuseColor.rgb, smoothstep(0.19, 0.25, rr));
+          }` : ''}`);
+    }
+    if (depth) {
+      // depth shaders need the varying declared too (unused)
+      sh.vertexShader = sh.vertexShader;
+    }
   };
-  mat.customProgramCacheKey = () => 'sway' + amount;
+  mat.customProgramCacheKey = () => `plant${isHead}${depth}`;
   return mat;
+}
+
+class SunflowerLayer {
+  constructor({ inner, outer, jitter, stride, headGeo, bodyGeo, headMat, bodyMat, headDepth, bodyDepth, field, scale = 1, shadows = true }) {
+    const n = Math.ceil(((outer + jitter) * 2) / (SX * stride)) + 2;
+    const m = Math.ceil(((outer + jitter) * 2) / (SZ * stride)) + 2;
+    const cells = new Float32Array(n * m * 2);
+    let k = 0;
+    for (let j = 0; j < m; j++) for (let i = 0; i < n; i++) { cells[k++] = i; cells[k++] = j; }
+    this.stride = stride;
+    this.uniforms = {
+      uCamCell: { value: new THREE.Vector2() },
+      uGrid: { value: new THREE.Vector2(n, m) },
+      uSpacing: { value: new THREE.Vector2(SX, SZ) },
+      uFieldMin: { value: field.fieldMin },
+      uFieldSize: { value: field.fieldSize },
+      uField: { value: field.fieldTex },
+      uCam: { value: new THREE.Vector3() },
+      uRange: { value: new THREE.Vector4(inner, outer, jitter, scale) },
+      uStride: { value: stride },
+      uTime: { value: 0 },
+    };
+    this.meshes = [];
+    const make = (src, mat, depthMat, isHead) => {
+      const g = new THREE.InstancedBufferGeometry();
+      g.index = src.index;
+      for (const key of Object.keys(src.attributes)) g.setAttribute(key, src.attributes[key]);
+      g.setAttribute('aCell', new THREE.InstancedBufferAttribute(cells, 2));
+      g.instanceCount = n * m;
+      g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
+      const mm = mat.clone();
+      injectPlant(mm, this.uniforms, isHead);
+      const mesh = new THREE.Mesh(g, mm);
+      mesh.frustumCulled = false;
+      mesh.castShadow = shadows;
+      mesh.receiveShadow = true;
+      if (shadows) {
+        const dm = depthMat.clone();
+        injectPlant(dm, this.uniforms, isHead, true);
+        mesh.customDepthMaterial = dm;
+      }
+      this.meshes.push(mesh);
+    };
+    make(bodyGeo, bodyMat, bodyDepth, false);
+    make(headGeo, headMat, headDepth, true);
+  }
+
+  update(dt, cam) {
+    const u = this.uniforms;
+    u.uTime.value += dt;
+    u.uCam.value.copy(cam);
+    const s = this.stride;
+    u.uCamCell.value.set(Math.floor(cam.x / (SX * s)) * s, Math.floor(cam.z / (SZ * s)) * s);
+  }
 }
 
 export function build(ctx, def) {
@@ -84,23 +207,36 @@ export function build(ctx, def) {
   const q = ctx.q;
   const noise = makeNoise2D(5);
 
-  // layout: main path along -Z, one cross path
-  const MAIN = { z0: 10, z1: -112, half: 1.25 };
-  const CROSS = { z: -62, x0: -27, x1: 27, half: 1.2 };
+  // ---------------------------------------------------------------- layout
+  const crossZ = [70, -30, -130];
+  const sideX = [-100, 100];
+  const clearings = [
+    { x: 0, z: 118, r: 9 },          // start
+    { x: 0, z: -205, r: 9 },         // end of the main path (locked door)
+    { x: -170, z: -30, r: 8 },       // west (locked door)
+    { x: 170, z: 70, r: 8 },         // east (locked door)
+    { x: 100, z: -130, r: 9 },       // the real door
+    { x: -100, z: 70, r: 7 },
+    { x: -60, z: -170, r: 7 },       // hidden glade, no path
+    { x: 140, z: -60, r: 6 },        // hidden glade, no path
+  ];
   const pathDist = (x, z) => {
-    let d = Infinity;
-    if (z < MAIN.z0 && z > MAIN.z1 - 3) d = Math.abs(x);
-    if (x > CROSS.x0 - 3 && x < CROSS.x1 + 3) d = Math.min(d, Math.abs(z - CROSS.z));
+    let d = Math.hypot(x, Math.max(0, z - 120, -205 - z));
+    for (const cz of crossZ) d = Math.min(d, Math.hypot(z - cz, Math.max(0, Math.abs(x) - 170)));
+    for (const sx of sideX) d = Math.min(d, Math.hypot(x - sx, Math.max(0, z - 70, -130 - z)));
     return d;
   };
-  const height = (x, z) => fbm2(noise, x * 0.01, z * 0.01, 3) * 1.2 + fbm2(noise, x * 0.004 + 9, z * 0.004, 2) * 6 * smoothstep(60, 160, Math.hypot(x, z + 50));
+  const clearD = (x, z) => {
+    let best = Infinity;
+    for (const c of clearings) best = Math.min(best, Math.hypot(x - c.x, z - c.z) - c.r);
+    return best;
+  };
+  const height = (x, z) => fbm2(noise, x * 0.01, z * 0.01, 3) * 1.4 + fbm2(noise, x * 0.003 + 9, z * 0.003, 2) * 8 * smoothstep(230, 330, Math.hypot(x, z + 40));
+  const open = (x, z) => Math.max(1 - smoothstep(1.0, 1.9, pathDist(x, z)), 1 - smoothstep(0, 1.2, clearD(x, z)));
   const terrain = new Terrain({
-    size: 420, segments: 120, fieldRes: 512, height,
-    grass: (x, z) => {
-      const p = pathDist(x, z);
-      return 0.35 * smoothstep(1.4, 2.2, p) + 0.0;
-    },
-    path: (x, z) => 1 - smoothstep(MAIN.half * 0.7, MAIN.half + 0.5, pathDist(x, z)),
+    size: 720, segments: 200, fieldRes: 720, height,
+    grass: (x, z) => 0.3 * (1 - open(x, z)) + 0.55 * smoothstep(1.3, 2.4, pathDist(x, z)) * (1 - smoothstep(2.4, 3.5, pathDist(x, z))),
+    path: (x, z) => open(x, z),
     tint: (x, z) => 0.35 + 0.3 * fbm2(noise, x * 0.05, z * 0.05, 2),
     groundTex: leafyTexture('#7a8a44', 'fieldGround'),
     pathTex: dirtTexture('#e6caa2'),
@@ -109,157 +245,72 @@ export function build(ctx, def) {
   });
   L.add(terrain.mesh);
   L.groundHeight = height;
-  L.surface = (x, z) => 'dirt';
+  L.surface = (x, z) => (open(x, z) > 0.5 ? 'dirt' : 'grass');
 
-  // short weedy grass along the path edges
-  const grass = grassLayers(terrain, q, { height: 0.35, width: 0.07, base: '#3e5f1c', tip: '#a7c45a', nearCount: 30000, farCount: 12000, farPatch: 34 });
+  const grass = grassLayers(terrain, q, { height: 0.32, width: 0.07, base: '#3e5f1c', tip: '#a7c45a', densityMul: 0.45 });
   grass.meshes.forEach((m) => L.add(m));
 
   L.setupSky(skyOpts);
   L.setupSun({ dir: skyOpts.sunDir, color: '#fff1d8', intensity: 2.8, area: 28 });
   L.setupHemi('#bcdcf2', '#8a7a4a', 1.15);
-  L.setupFog('#b5d6ea', 25, 190);
+  L.setupFog('#b5d6ea', 30, 230);
   L.envFromSky(0.5);
 
-  // ---------------------------------------------------------------- sunflowers
-  const uniforms = { uTime: { value: 0 } };
-  L.onUpdate((dt) => { uniforms.uTime.value += dt; grass.update(dt, ctx.camera.position); });
-  const headTex = sunflowerHeadTexture();
-  const headMat = swayMaterial(new THREE.MeshStandardMaterial({ map: headTex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.75 }), uniforms);
-  const stemMat = swayMaterial(new THREE.MeshStandardMaterial({ color: '#5e8a3a', roughness: 0.8 }), uniforms);
-  const leafMat = swayMaterial(new THREE.MeshStandardMaterial({ map: leafTexture('#5d9a3c'), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.8 }), uniforms);
-  const backMat = swayMaterial(new THREE.MeshStandardMaterial({ color: '#4d7a2e', roughness: 0.9 }), uniforms);
-
-  const rnd = mulberry32(42);
-  const plants = [];
-  const density = Math.max(0.4, q.detail);
-  const LEAVES = q.detail >= 1 ? 3 : 2;
-  const addRows = (x0, x1, spacingX, spacingZ, near) => {
-    for (let x = x0; x <= x1; x += spacingX) {
-      for (const side of [-1, 1]) {
-        const rx = side * x;
-        for (let z = MAIN.z0 + 6; z > MAIN.z1 - 40; z -= spacingZ) {
-          const jx = rx + (rnd() - 0.5) * 0.25, jz = z + (rnd() - 0.5) * 0.3;
-          if (pathDist(jx, jz) < 1.75) continue;
-          plants.push({ x: jx, z: jz, near });
-        }
-      }
-    }
-  };
-  const nearRows = 6 + Math.round(6 * density);
-  addRows(1.85, 1.85 + nearRows * 0.95, 0.95, 0.72 / Math.min(1.2, density), true);
-  addRows(2.0 + nearRows * 0.95, 44, 1.5 / density, 1.1 / density, false);
-  // a ring behind the start and around the end so the field feels endless
-  for (let i = 0; i < 1400 * density; i++) {
-    const x = (rnd() - 0.5) * 100, z = MAIN.z0 + 6 + rnd() * 30;
-    plants.push({ x, z, near: false });
+  // ---------------------------------------------------------------- the endless sunflowers
+  const headMat = new THREE.MeshStandardMaterial({ map: sunflowerHeadTexture(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.75 });
+  const bodyMat = new THREE.MeshStandardMaterial({ map: leafTexture('#5d9a3c'), color: '#ffffff', alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.8 });
+  const stemMat = new THREE.MeshStandardMaterial({ color: '#5e8a3a', roughness: 0.8 });
+  const headDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: sunflowerHeadTexture(), alphaTest: 0.5, side: THREE.DoubleSide });
+  const bodyDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: leafTexture('#5d9a3c'), alphaTest: 0.5, side: THREE.DoubleSide });
+  const plainDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  // leaves share the leaf texture; the stem samples its centre (opaque green)
+  const nearBody = bodyGeometry(q.detail >= 1 ? 3 : 2);
+  {
+    // stem UVs point at the middle of the leaf texture so one material fits all
+    const uv = nearBody.attributes.uv;
+    const stemVerts = new THREE.CylinderGeometry(0.022, 0.032, H0, 5, 1, true).toNonIndexed().attributes.position.count;
+    for (let i = 0; i < stemVerts; i++) uv.setXY(i, 0.4, 0.5);
   }
-
-  const headGeo = headGeometry(0.34, 4, 16);
-  const headGeoLo = headGeometry(0.34, 2, 10);
-  const stemGeo = new THREE.CylinderGeometry(0.022, 0.032, 1, 5, 1, true).translate(0, 0.5, 0);
-  const backGeo = new THREE.ConeGeometry(0.13, 0.12, 10, 1, true).rotateX(-Math.PI / 2).translate(0, 0, -0.08);
-  const leafGeo = leafGeometry();
-
-  // split the field into chunks along the path so cameras (and the shadow
-  // camera) can cull what they don't see
-  const CHUNK = 14;
-  const chunks = new Map();
-  for (const pl of plants) {
-    const key = Math.floor(pl.z / CHUNK) + ':' + (pl.x < 0 ? 'l' : 'r');
-    if (!chunks.has(key)) chunks.set(key, []);
-    chunks.get(key).push(pl);
+  const R = {
+    low: [10, 26, 0], medium: [14, 34, 62], high: [19, 46, 92], ultra: [24, 56, 115],
+  }[ctx.qualityName] || [15, 38, 72];
+  const field = terrain;
+  const layers = [
+    new SunflowerLayer({ inner: -10, outer: R[0], jitter: 5, stride: 1, headGeo: headGeometry(0.34, 4, 16), bodyGeo: nearBody, headMat, bodyMat, headDepth, bodyDepth, field, shadows: q.shadows }),
+    new SunflowerLayer({ inner: R[0], outer: R[1], jitter: 5, stride: 1, headGeo: headGeometry(0.34, 2, 10), bodyGeo: bodyGeometry(0), headMat, bodyMat: stemMat, headDepth, bodyDepth: plainDepth, field, shadows: q.shadows && q.detail >= 1 }),
+  ];
+  if (R[2] > 0) {
+    layers.push(new SunflowerLayer({ inner: R[1], outer: R[2], jitter: 5, stride: 2, headGeo: headGeometry(0.34, 2, 9), bodyGeo: bodyGeometry(0), headMat, bodyMat: stemMat, headDepth, bodyDepth: plainDepth, field, scale: 1.3, shadows: false }));
   }
-  const m = new THREE.Matrix4(), q4 = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3();
-  for (const list of chunks.values()) {
-    const nNear = list.filter((pl) => pl.near).length;
-    const nFar = list.length - nNear;
-    const headsNear = nNear ? new THREE.InstancedMesh(headGeo, headMat, nNear) : null;
-    const backs = nNear ? new THREE.InstancedMesh(backGeo, backMat, nNear) : null;
-    const leaves = nNear ? new THREE.InstancedMesh(leafGeo, leafMat, nNear * LEAVES) : null;
-    const headsFar = nFar ? new THREE.InstancedMesh(headGeoLo, headMat, nFar) : null;
-    const stems = new THREE.InstancedMesh(stemGeo, stemMat, list.length);
-    let iN = 0, iF = 0, iS = 0, iL = 0;
-    for (const pl of list) {
-      const gy = height(pl.x, pl.z);
-      const h = 1.55 + rnd() * 0.7;
-      p.set(pl.x, gy, pl.z);
-      e.set((rnd() - 0.5) * 0.08, 0, (rnd() - 0.5) * 0.08);
-      q4.setFromEuler(e);
-      s.set(1, h, 1);
-      m.compose(p, q4, s);
-      stems.setMatrixAt(iS++, m);
-      // head facing +Z (toward the start of the path), nodding a little
-      p.set(pl.x + e.z * -h * 0.5, gy + h, pl.z + e.x * h * 0.5);
-      e.set(-0.25 - rnd() * 0.35, (rnd() - 0.5) * 0.6, (rnd() - 0.5) * 0.4);
-      q4.setFromEuler(e);
-      const hs = 0.85 + rnd() * 0.35;
-      s.set(hs, hs, hs);
-      m.compose(p, q4, s);
-      if (pl.near) {
-        headsNear.setMatrixAt(iN, m);
-        backs.setMatrixAt(iN, m);
-        iN++;
-        for (let k = 0; k < LEAVES; k++) {
-          p.set(pl.x, gy + h * (0.35 + k * (0.4 / LEAVES)), pl.z);
-          e.set(0, rnd() * Math.PI * 2, 0);
-          q4.setFromEuler(e);
-          const ls = 0.8 + rnd() * 0.5;
-          s.set(ls, ls, ls);
-          m.compose(p, q4, s);
-          leaves.setMatrixAt(iL++, m);
-        }
-      } else {
-        headsFar.setMatrixAt(iF++, m);
-      }
-    }
-    for (const im of [headsNear, backs, leaves, headsFar, stems]) {
-      if (!im) continue;
-      im.instanceMatrix.needsUpdate = true;
-      im.castShadow = im !== headsFar && (im !== leaves || q.detail >= 1);
-      im.receiveShadow = true;
-      im.computeBoundingSphere();
-      im.boundingSphere.radius += 1.5; // room for the wind sway
-      L.add(im);
-    }
-  }
+  for (const ly of layers) ly.meshes.forEach((m) => L.add(m));
+  L.onUpdate((dt) => {
+    const c = ctx.camera.position;
+    for (const ly of layers) ly.update(dt, c);
+    grass.update(dt, c);
+  });
 
-  // walls of sunflowers: keep the player on the paths
-  const t = 0.4;
-  const wall = (x, z, w, d) => L.collide(boxCollider(x, z, w, d));
-  const cz = CROSS.z, ch = CROSS.half + 0.35;
-  const mh = MAIN.half + 0.35;
-  // left & right of main path, split by the cross path
-  wall(-mh - t / 2, (MAIN.z0 + cz + ch) / 2, t, MAIN.z0 - (cz + ch));
-  wall(mh + t / 2, (MAIN.z0 + cz + ch) / 2, t, MAIN.z0 - (cz + ch));
-  wall(-mh - t / 2, (cz - ch + MAIN.z1) / 2, t, (cz - ch) - MAIN.z1);
-  wall(mh + t / 2, (cz - ch + MAIN.z1) / 2, t, (cz - ch) - MAIN.z1);
-  // cross path sides
-  wall((CROSS.x0 - mh) / 2, cz + ch + t / 2, -mh - CROSS.x0, t);
-  wall((CROSS.x0 - mh) / 2, cz - ch - t / 2, -mh - CROSS.x0, t);
-  wall((CROSS.x1 + mh) / 2, cz + ch + t / 2, CROSS.x1 - mh, t);
-  wall((CROSS.x1 + mh) / 2, cz - ch - t / 2, CROSS.x1 - mh, t);
-  // ends
-  wall(0, MAIN.z0 + t / 2, mh * 2 + 1, t);
-  wall(0, MAIN.z1 - t / 2, mh * 2 + 1, t);
-  wall(CROSS.x0 - t / 2, cz, t, ch * 2 + 1);
-  wall(CROSS.x1 + t / 2, cz, t, ch * 2 + 1);
-
-  // doors: the one at the end of the main path is locked; the real one waits on the left
-  L.makeDecoy({ color: '#f6a6c8', frameColor: '#f3b6d2' }, 0, height(0, MAIN.z1 + 0.6), MAIN.z1 + 0.6, 0);
-  L.makeDecoy({ color: '#f6a6c8', frameColor: '#f3b6d2' }, CROSS.x1 - 0.6, height(CROSS.x1 - 0.6, cz), cz, -Math.PI / 2);
-  L.makeDoor({ color: '#ff9cc6', frameColor: '#ffb4d4', glow: '#ffe6f2', style: 'panel' }, CROSS.x0 + 0.6, height(CROSS.x0 + 0.6, cz), cz, Math.PI / 2);
-
+  // ---------------------------------------------------------------- props on the clearings
   const b = bench('#8a6a48');
-  b.position.set(0.0, height(0, -30), -30);
-  b.rotation.y = Math.PI / 2;
-  b.position.x = 0.9;
+  b.position.set(4, height(4, 112), 112);
+  b.rotation.y = -Math.PI / 2;
   L.add(b);
-  L.collide(boxCollider(0.9, -30, 0.6, 1.9));
+  for (const [x, z, r] of [[-100, 70, 0.6], [-60, -170, 2.2], [140, -60, -1.0]]) {
+    const s = scarecrow();
+    s.position.set(x, height(x, z), z);
+    s.rotation.y = r;
+    L.add(s);
+  }
 
-  L.spawn = { x: 0, z: 6, yaw: 0, pitch: 0.02 };
-  L.menuCam = { x: 0, z: 6, yaw: 0, y: 1.6, pitch: 0.04 };
-  L.far = 260;
-  L.bounds = { type: 'box', x0: CROSS.x0 - 1, x1: CROSS.x1 + 1, z0: MAIN.z1 - 1, z1: MAIN.z0 + 1 };
+  // doors: locked ones at the ends of the paths, the real one waits on the east-south clearing
+  const pink = { color: '#f6a6c8', frameColor: '#f3b6d2' };
+  L.makeDecoy(pink, 0, height(0, -207), -207, 0);
+  L.makeDecoy(pink, -172, height(-172, -30), -30, Math.PI / 2);
+  L.makeDecoy(pink, 172, height(172, 70), 70, -Math.PI / 2);
+  L.makeDoor({ color: '#ff9cc6', frameColor: '#ffb4d4', glow: '#ffe6f2', style: 'panel', beacon: true }, 103, height(103, -130), -130, -Math.PI / 2);
+
+  L.spawn = { x: 0, z: 116, yaw: 0, pitch: 0.02 };
+  L.menuCam = { x: 0, z: 116, yaw: 0, y: 1.6, pitch: 0.04 };
+  L.bounds = { type: 'circle', x: 0, z: -40, r: 245 };
+  L.far = 320;
   return L;
 }

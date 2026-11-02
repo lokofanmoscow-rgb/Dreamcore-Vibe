@@ -8,6 +8,7 @@ export class Input {
     this.move = { x: 0, y: 0 };
     this.look = { x: 0, y: 0 };
     this.run = false;
+    this.jumpQueued = false;
     this.enabled = false;
     this.keys = new Set();
     this.stickId = null;
@@ -24,7 +25,10 @@ export class Input {
     root.addEventListener('touchend', (e) => this.onTouchEnd(e), opts);
     root.addEventListener('touchcancel', (e) => this.onTouchEnd(e), opts);
 
-    window.addEventListener('keydown', (e) => { this.keys.add(e.code); });
+    window.addEventListener('keydown', (e) => {
+      this.keys.add(e.code);
+      if (e.code === 'Space' && this.enabled && !e.repeat) this.jumpQueued = true;
+    });
     window.addEventListener('keyup', (e) => { this.keys.delete(e.code); });
     window.addEventListener('blur', () => this.reset());
 
@@ -153,6 +157,14 @@ export class Input {
     if (l > 1) { x /= l; y /= l; }
     const run = this.run || k.has('ShiftLeft') || k.has('ShiftRight');
     return { x, y, run };
+  }
+
+  queueJump() { if (this.enabled) this.jumpQueued = true; }
+
+  consumeJump() {
+    const j = this.jumpQueued;
+    this.jumpQueued = false;
+    return j;
   }
 
   consumeLook() {

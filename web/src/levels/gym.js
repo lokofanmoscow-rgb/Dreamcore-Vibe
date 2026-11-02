@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { LevelBase, floatingMotes } from './common.js';
-import { woodFloorTexture, paintedWallTexture, glowTexture, canvasTexture, nrm, rep } from '../core/textures.js';
+import { woodFloorTexture, paintedWallTexture, glowTexture, canvasTexture, tileTexture, nrm, rep } from '../core/textures.js';
 import { bx, cyl, mesh, std, boxCollider, circleCollider } from '../props/props.js';
 
 const W = 13, D = 17, H = 10; // half width, half depth, height
+const CL = 62; // corridor length
 
 function courtLinesTexture() {
   // 17 x 28 m court drawn at 40 px per metre
@@ -154,7 +155,12 @@ export function build(ctx, def) {
   }
   walls.push(bx(T, winY1 - winY0, D - zc, W + T / 2, (winY0 + winY1) / 2, (D + zc) / 2));
   // end walls
-  walls.push(bx(W * 2 + T * 2, H, T, 0, H / 2, -D - T / 2));
+  // far wall with an opening into the school corridor
+  const OX0 = 7.6, OX1 = 10.4, OH = 2.7;
+  walls.push(bx(OX0 + W + T, H, T, (-W - T + OX0) / 2, H / 2, -D - T / 2));
+  walls.push(bx(W + T - OX1, H, T, (OX1 + W + T) / 2, H / 2, -D - T / 2));
+  walls.push(bx(OX1 - OX0, H - OH, T, (OX0 + OX1) / 2, OH + (H - OH) / 2, -D - T / 2));
+  L.collide(boxCollider((-W + OX0) / 2, -D - T / 2, OX0 + W, T + 0.2), boxCollider((OX1 + W) / 2, -D - T / 2, W - OX1, T + 0.2));
   walls.push(bx(W * 2 + T * 2, H, T, 0, H / 2, D + T / 2));
   const wallMesh = mesh(walls, wallMat);
   L.add(wallMesh);
@@ -200,13 +206,13 @@ export function build(ctx, def) {
   // ---------------------------------------------------------------- light
   const hemi = L.setupHemi('#ffe2b8', '#a86a3a', 0.55);
   const sun = new THREE.DirectionalLight('#ffd59a', q.shadows ? 7.5 : 1.2);
-  sun.position.copy(toSun).multiplyScalar(40);
-  sun.target.position.set(0, 0, 0);
+  sun.position.copy(toSun).multiplyScalar(70).add(new THREE.Vector3(0, 0, -30));
+  sun.target.position.set(0, 0, -30);
   if (q.shadows) {
     sun.castShadow = true;
     sun.shadow.mapSize.set(q.shadowSize, q.shadowSize);
     const c = sun.shadow.camera;
-    c.left = -26; c.right = 26; c.top = 26; c.bottom = -26; c.near = 5; c.far = 90;
+    c.left = -58; c.right = 58; c.top = 58; c.bottom = -58; c.near = 5; c.far = 160;
     sun.shadow.bias = -0.0005;
     sun.shadow.normalBias = 0.04;
     sun.shadow.radius = 3;
@@ -357,6 +363,61 @@ export function build(ctx, def) {
   }
   L.collide(circleCollider(2.2, 12.6, 0.15));
 
+  // ---------------------------------------------------------------- endless school corridor
+  const CX0 = 6.4, CX1 = 11.6, CH2 = 3.1;
+  const corrFloorTex = rep(tileTexture('#e8dcc4', '#c8b898', 3, 'gymcorr', 0.03), (CX1 - CX0), CL);
+  const corrFloor = new THREE.Mesh(new THREE.PlaneGeometry(CX1 - CX0, CL), new THREE.MeshStandardMaterial({ map: corrFloorTex, roughness: 0.25 }));
+  corrFloor.rotation.x = -Math.PI / 2;
+  corrFloor.position.set((CX0 + CX1) / 2, 0.002, -D - CL / 2);
+  corrFloor.receiveShadow = true;
+  L.add(corrFloor);
+  const cw = [];
+  cw.push(bx(T, CH2, CL, CX0 - T / 2, CH2 / 2, -D - CL / 2), bx(T, CH2, CL, CX1 + T / 2, CH2 / 2, -D - CL / 2));
+  cw.push(bx(CX1 - CX0 + 2 * T, CH2, T, (CX0 + CX1) / 2, CH2 / 2, -D - CL - T / 2));
+  cw.push(bx(CX1 - CX0 + 2 * T, 0.3, CL, (CX0 + CX1) / 2, CH2 + 0.15, -D - CL / 2));
+  L.add(mesh(cw, wallMat));
+  L.collide(boxCollider(CX0 - T / 2, -D - CL / 2, T, CL), boxCollider(CX1 + T / 2, -D - CL / 2, T, CL));
+  // lockers along both walls (with gaps for the classroom doors)
+  const lockerTex = canvasTexture(128, 256, (c, w, h) => {
+    c.fillStyle = '#ffffff'; c.fillRect(0, 0, w, h);
+    c.strokeStyle = 'rgba(0,0,0,0.35)'; c.lineWidth = 4; c.strokeRect(2, 2, w - 4, h - 4);
+    c.fillStyle = 'rgba(0,0,0,0.35)';
+    for (let i = 0; i < 5; i++) c.fillRect(w * 0.25, 18 + i * 9, w * 0.5, 4);
+    for (let i = 0; i < 5; i++) c.fillRect(w * 0.25, h - 70 + i * 9, w * 0.5, 4);
+    c.fillStyle = '#c0c0c0'; c.fillRect(w * 0.72, h * 0.48, 10, 26);
+  }, { wrap: true });
+  lockerTex.repeat.set(1, 1);
+  const lockerCols = ['#7fc6b8', '#e98f6e', '#8fb4e8'];
+  const doorsAt = [-D - 14, -D - 30, -D - 46];
+  lockerCols.forEach((col, ci) => {
+    const g = [];
+    for (let z = -D - 1.5; z > -D - CL + 3; z -= 0.5) {
+      if (doorsAt.some((dz) => Math.abs(z - dz) < 1.1)) continue;
+      const band = Math.floor((-z - D) / 8) % 3;
+      if (band !== ci) continue;
+      for (const sx of [CX0 + 0.22, CX1 - 0.22]) {
+        const b = new THREE.BoxGeometry(0.4, 1.9, 0.48);
+        const uv = b.attributes.uv;
+        b.translate(sx, 0.95, z);
+        g.push(b);
+      }
+    }
+    if (g.length) {
+      const m = mesh(g, new THREE.MeshStandardMaterial({ color: col, map: lockerTex, roughness: 0.4, metalness: 0.5 }));
+      L.add(m);
+    }
+  });
+  L.collide(boxCollider(CX0 + 0.22, -D - CL / 2, 0.45, CL), boxCollider(CX1 - 0.22, -D - CL / 2, 0.45, CL));
+  // flickerless fluorescent panels
+  const fl = [];
+  for (let z = -D - 3; z > -D - CL; z -= 4) fl.push(bx(1.2, 0.05, 0.5, (CX0 + CX1) / 2, CH2 - 0.03, z));
+  L.add(mesh(fl, new THREE.MeshBasicMaterial({ color: new THREE.Color('#fff8e8').multiplyScalar(2.4) }), { cast: false }));
+  // classroom doors (locked) and a trophy cabinet
+  doorsAt.forEach((dz, i) => L.makeDecoy({ color: '#b86a3e', frameColor: '#7a5a42', style: 'glass' }, i % 2 ? CX1 - 0.12 : CX0 + 0.12, 0, dz, i % 2 ? -Math.PI / 2 : Math.PI / 2));
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.6, 2.2), new THREE.MeshStandardMaterial({ color: '#d8e8ff', roughness: 0.05, metalness: 0.2, emissive: '#ffe8b0', emissiveIntensity: 0.6 }));
+  cab.position.set(CX1 - 0.3, 1.3, -D - 38);
+  L.add(cab);
+
   // exit sign
   const exitTex = canvasTexture(256, 96, (c, w, h) => {
     c.fillStyle = '#0e2a14'; c.fillRect(0, 0, w, h);
@@ -364,14 +425,14 @@ export function build(ctx, def) {
     c.shadowColor = '#5dff7a'; c.shadowBlur = 14; c.fillText('ВЫХОД', w / 2, h / 2 + 2);
   }, { wrap: false });
   const exitSign = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.34, 0.12), new THREE.MeshBasicMaterial({ map: exitTex, color: new THREE.Color(2.2, 2.2, 2.2) }));
-  exitSign.position.set(9, 2.85, -D + 0.08);
+  exitSign.position.set(9, 2.85, -D - CL + 0.08);
   L.add(exitSign);
 
   // decoy: locker room door
   L.makeDecoy({ color: '#b86a3e', frameColor: '#7a5a42', style: 'glass' }, W - 0.12, 0, -10, -Math.PI / 2);
   L.makeDecoy({ color: '#b86a3e', frameColor: '#7a5a42', style: 'glass' }, -6, 0, D - 0.12, Math.PI);
   // the real exit
-  L.makeDoor({ color: '#c87a46', frameColor: '#8a6a50', glow: '#fff0c8', style: 'glass', width: 1.1 }, 9, 0, -D + 0.14, 0);
+  L.makeDoor({ color: '#c87a46', frameColor: '#8a6a50', glow: '#fff0c8', style: 'glass', width: 1.1 }, 9, 0, -D - CL + 0.14, 0);
 
   // dust in the sunbeams
   const motes = floatingMotes(Math.round(380 * q.particles), { color: '#ffe6b8', size: 0.045, area: 12, height: 8.5, speed: 0.08, opacity: 0.9, tex: glowTexture() });
@@ -381,8 +442,8 @@ export function build(ctx, def) {
   L.colliders.push(
     boxCollider(0, 12.8 + 0.25, 0.3, 0.3), boxCollider(0, -12.8 - 0.25, 0.3, 0.3),
   );
-  L.bounds = { type: 'box', x0: -W + 0.2, x1: W - 0.2, z0: -D + 0.2, z1: D - 0.2 };
-  L.surface = () => 'wood';
+  L.bounds = { type: 'box', x0: -W + 0.2, x1: W - 0.2, z0: -D - CL + 0.2, z1: D - 0.2 };
+  L.surface = (x, z) => (z < -D ? 'tile' : 'wood');
   L.spawn = { x: 3.2, z: 13.5, yaw: 0.12, pitch: -0.06 };
   L.menuCam = { x: 3.0, z: 13.5, yaw: 0.1, y: 1.0, pitch: 0.12 };
 

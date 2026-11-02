@@ -21,12 +21,15 @@ export class Terrain {
     roughness = 0.95,
     receiveShadow = true,
     outer = null,
+    cx = 0,
+    cz = 0,
   }) {
     this.size = size;
     this.heightFn = height;
     this.grassFn = grass;
     this.pathFn = path;
     this.min = -size / 2;
+    this.cx = cx; this.cz = cz;
 
     // field data texture (half float, linear filtered)
     const N = fieldRes;
@@ -34,8 +37,8 @@ export class Terrain {
     const toH = THREE.DataUtils.toHalfFloat;
     for (let j = 0; j < N; j++) {
       for (let i = 0; i < N; i++) {
-        const x = this.min + (i + 0.5) / N * size;
-        const z = this.min + (j + 0.5) / N * size;
+        const x = cx + this.min + (i + 0.5) / N * size;
+        const z = cz + this.min + (j + 0.5) / N * size;
         const k = (j * N + i) * 4;
         data[k] = toH(height(x, z));
         data[k + 1] = toH(Math.max(0, Math.min(1, grass(x, z))));
@@ -49,12 +52,13 @@ export class Terrain {
     tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
     tex.needsUpdate = true;
     this.fieldTex = tex;
-    this.fieldMin = new THREE.Vector2(this.min, this.min);
+    this.fieldMin = new THREE.Vector2(cx + this.min, cz + this.min);
     this.fieldSize = new THREE.Vector2(size, size);
 
     // mesh
     const geo = new THREE.PlaneGeometry(size, size, segments, segments);
     geo.rotateX(-Math.PI / 2);
+    geo.translate(cx, 0, cz);
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i++) {
       pos.setY(i, height(pos.getX(i), pos.getZ(i)));
@@ -112,11 +116,12 @@ export class Terrain {
       // coarse ring for far hills; sunk below the detailed terrain inside its area
       const og = new THREE.PlaneGeometry(outer.size, outer.size, outer.segments, outer.segments);
       og.rotateX(-Math.PI / 2);
+      og.translate(cx, 0, cz);
       const op = og.attributes.position;
       const lim = size / 2 - 1;
       for (let i = 0; i < op.count; i++) {
         const x = op.getX(i), z = op.getZ(i);
-        const inside = Math.abs(x) < lim && Math.abs(z) < lim;
+        const inside = Math.abs(x - cx) < lim && Math.abs(z - cz) < lim;
         op.setY(i, height(x, z) - (inside ? 4 : 0));
       }
       og.computeVertexNormals();
@@ -169,11 +174,13 @@ export class Grass {
     wind = 1.0,
     seed = 1,
     shadows = true,
-    fadeStart = 0.3,
-    inner = 0,
+    segments = 4,
+    fadeIn = [0, 0],
+    fadeOut = null,
+    shrink = false,
   }) {
     this.terrain = terrain;
-    const geo = bladeGeometry(4);
+    const geo = bladeGeometry(segments);
     const rnd = mulberry32(seed);
     const offsets = new Float32Array(count * 2);
     const params = new Float32Array(count * 4);
@@ -181,14 +188,15 @@ export class Grass {
       offsets[i * 2] = (rnd() - 0.5) * patch;
       offsets[i * 2 + 1] = (rnd() - 0.5) * patch;
       params[i * 4] = rnd() * Math.PI * 2;
-      params[i * 4 + 1] = height * (0.55 + rnd() * 0.9);
-      params[i * 4 + 2] = width * (0.7 + rnd() * 0.6);
+      params[i * 4 + 1] = height * (0.6 + rnd() * 0.8);
+      params[i * 4 + 2] = width * (0.75 + rnd() * 0.5);
       params[i * 4 + 3] = rnd();
     }
     geo.setAttribute('aOffset', new THREE.InstancedBufferAttribute(offsets, 2));
     geo.setAttribute('aParams', new THREE.InstancedBufferAttribute(params, 4));
     geo.instanceCount = count;
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
+    const fo = fadeOut || [patch * 0.3, patch * 0.48];
 
     const uniforms = {
       uField: { value: terrain.fieldTex },
@@ -196,8 +204,9 @@ export class Grass {
       uFieldSize: { value: terrain.fieldSize },
       uCenter: { value: new THREE.Vector2() },
       uPatch: { value: patch },
-      uFadeStart: { value: fadeStart },
-      uInner: { value: inner },
+      uFadeIn: { value: new THREE.Vector2(fadeIn[0], fadeIn[1]) },
+      uFadeOut: { value: new THREE.Vector2(fo[0], fo[1]) },
+      uShrink: { value: shrink ? 1 : 0 },
       uTime: { value: 0 },
       uWind: { value: wind },
       uNoise: { value: noiseDataTexture() },
@@ -214,21 +223,27 @@ export class Grass {
           attribute vec2 aOffset;
           attribute vec4 aParams;
           uniform sampler2D uField, uNoise;
-          uniform vec2 uFieldMin, uFieldSize, uCenter;
-          uniform float uPatch, uTime, uWind, uFadeStart, uInner;
+          uniform vec2 uFieldMin, uFieldSize, uCenter, uFadeIn, uFadeOut;
+          uniform float uPatch, uTime, uWind, uShrink;
           uniform vec3 uBase, uTip;
           varying vec3 vGrassCol;`)
         .replace('#include <beginnormal_vertex>', `
+          // blades are fixed in the world; the patch just wraps around the camera
           vec2 rel = mod(aOffset - uCenter + uPatch * 0.5, uPatch) - uPatch * 0.5;
           vec2 wxz = uCenter + rel;
           vec2 fuv = (wxz - uFieldMin) / uFieldSize;
           vec4 field = texture2D(uField, fuv);
           float inside = step(0.0, fuv.x) * step(fuv.x, 1.0) * step(0.0, fuv.y) * step(fuv.y, 1.0);
           float dist = length(rel);
-          float fade = 1.0 - smoothstep(uPatch * uFadeStart, uPatch * 0.5, dist);
-          fade *= smoothstep(uInner * 0.7, uInner, dist);
-          float keep = step(aParams.w, field.g) * inside;
-          float sH = aParams.y * fade * keep * (0.55 + 0.45 * field.g);
+          // stochastic level-of-detail: neighbouring layers cross-fade by thinning,
+          // so density changes smoothly instead of a visible circle around the player
+          float r2 = fract(aParams.x * 7.31 + aParams.w * 53.17);
+          float fin = uFadeIn.y > 0.0 ? smoothstep(uFadeIn.x, uFadeIn.y, dist) : 1.0;
+          float fout = 1.0 - smoothstep(uFadeOut.x, uFadeOut.y, dist);
+          float lod = step(r2, fin * fout);
+          float shrinkK = mix(1.0, 1.0 - smoothstep(mix(uFadeOut.x, uFadeOut.y, 0.5), uFadeOut.y, dist) * 0.7, uShrink);
+          float keep = step(aParams.w, field.g) * inside * lod;
+          float sH = aParams.y * keep * shrinkK * (0.6 + 0.4 * field.g);
           float ca = cos(aParams.x), sa = sin(aParams.x);
           vec3 objectNormal = normalize(vec3(sa * 0.35, 1.0, ca * 0.35));
         `)
@@ -243,11 +258,11 @@ export class Grass {
           p.xz += wdir * bend + vec2(sa, ca) * 0.08 * hN * hN * sH;
           p.y -= bend * bend * 0.35;
           vec3 transformed = vec3(wxz.x, field.r, wxz.y) + p;
-          float ao = mix(0.35, 1.0, smoothstep(0.0, 0.7, hN));
-          vec3 gc = mix(uBase, uTip, smoothstep(0.0, 1.0, hN)) * (0.82 + aParams.w * 0.32 + (field.a - 0.5) * 0.4);
+          float ao = mix(0.38, 1.0, smoothstep(0.0, 0.7, hN));
+          vec3 gc = mix(uBase, uTip, smoothstep(0.0, 1.0, hN)) * (0.84 + aParams.w * 0.3 + (field.a - 0.5) * 0.4);
           float dry = fract(aParams.w * 17.31);
-          gc = mix(gc, gc * vec3(1.25, 1.05, 0.55), step(0.82, dry) * 0.6 * hN);
-          gc = mix(gc, gc * vec3(0.7, 0.85, 0.75), step(dry, 0.18) * 0.5);
+          gc = mix(gc, gc * vec3(1.2, 1.05, 0.6), step(0.85, dry) * 0.5 * hN);
+          gc = mix(gc, gc * vec3(0.75, 0.88, 0.78), step(dry, 0.15) * 0.4);
           gc *= 0.9 + gust * 0.25;
           vGrassCol = gc * ao;
         `);
@@ -326,22 +341,38 @@ function mergeTwo(a, b) {
   return g;
 }
 
-// Two grass layers: a very dense near patch and a sparser wide patch.
+// Grass as concentric level-of-detail layers (see QUALITY_PRESETS.grassLayers):
+// [patch size m, blades per m2, width multiplier, segments]. Neighbouring layers
+// cross-fade stochastically, wider blades far away keep the coverage identical.
 export function grassLayers(terrain, q, opts = {}) {
-  const density = q.grass;
-  const nearPatch = opts.nearPatch || 18;
-  const farPatch = (opts.farPatch || 46) + 14 * Math.min(1.5, density);
-  const near = new Grass({
-    ...opts, terrain, count: Math.round((opts.nearCount || 60000) * density), patch: nearPatch,
-    width: (opts.width || 0.08) * 0.75, fadeStart: 0.32, seed: 3,
-  });
-  const far = new Grass({
-    ...opts, terrain, count: Math.round((opts.farCount || 42000) * density), patch: farPatch,
-    width: (opts.width || 0.08) * 1.15, fadeStart: 0.3, inner: 0, seed: 9,
+  const layers = q.grassLayers;
+  const mul = opts.densityMul || 1;
+  const out = [];
+  let prevFade = null;
+  layers.forEach(([patch, density, wmul, segs], i) => {
+    const last = i === layers.length - 1;
+    const fadeOut = [patch * 0.3, patch * 0.48];
+    const g = new Grass({
+      ...opts,
+      terrain,
+      count: Math.round(patch * patch * density * mul),
+      patch,
+      width: (opts.width || 0.075) * wmul,
+      height: (opts.height || 0.45) * (i === 0 ? 1 : 1.04),
+      segments: segs,
+      fadeIn: prevFade || [0, 0],
+      fadeOut,
+      shrink: last,
+      shadows: (opts.shadows !== false) && q.shadows && i < 2,
+      seed: 3 + i * 7,
+    });
+    prevFade = fadeOut;
+    out.push(g);
   });
   return {
-    meshes: [near.mesh, far.mesh],
-    update(dt, camPos) { near.update(dt, camPos); far.update(dt, camPos); },
-    layers: [near, far],
+    meshes: out.map((g) => g.mesh),
+    update(dt, camPos) { for (const g of out) g.update(dt, camPos); },
+    layers: out,
+    reach: layers[layers.length - 1][0] * 0.48,
   };
 }

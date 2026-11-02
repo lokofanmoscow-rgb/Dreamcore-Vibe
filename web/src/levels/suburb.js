@@ -56,7 +56,7 @@ export function build(ctx, def) {
 
   // road centre line
   const road = [];
-  for (let z = 30; z >= -160; z -= 2) road.push({ x: 9 * Math.sin((z + 10) / 42) - 4, z });
+  for (let z = 30; z >= -370; z -= 2) road.push({ x: 9 * Math.sin((z + 10) / 42) - 4 + 14 * Math.sin((z + 120) / 130), z });
   const ROAD_HALF = 3.8, WALK_IN = 3.8, WALK_OUT = 6.0;
   // road z is monotonic, so only nearby segments need to be checked
   const dRoad = (x, z) => {
@@ -71,8 +71,8 @@ export function build(ctx, def) {
     return base + hills;
   };
   const terrain = new Terrain({
-    size: 300, segments: Math.round(300 * Math.min(1, Math.max(0.6, q.detail))), fieldRes: 512, height,
-    outer: { size: 1100, segments: 110 },
+    size: 640, segments: Math.round(340 * Math.min(1, Math.max(0.6, q.detail))), fieldRes: 768, height, cz: -170,
+    outer: { size: 1500, segments: 120 },
     grass: (x, z) => {
       const d = dRoad(x, z);
       return smoothstep(WALK_OUT + 0.3, WALK_OUT + 1.2, d) * (0.85 + 0.15 * fbm2(noise, x * 0.1, z * 0.1, 2));
@@ -129,7 +129,7 @@ export function build(ctx, def) {
   L.setupSky(skyOpts);
   L.setupSun({ dir: skyOpts.sunDir.map((v, i) => (i === 1 ? 0.16 : v)), color: '#ffae6a', intensity: 3.0, area: 36, far: 260 });
   L.setupHemi('#c7a0e6', '#6a4a40', 0.9);
-  L.setupFog('#e7a7a6', 40, 330);
+  L.setupFog('#e7a7a6', 50, 380);
   L.envFromSky(0.7);
 
   // ---------------------------------------------------------------- houses along the road
@@ -265,8 +265,8 @@ export function build(ctx, def) {
   const turbines = [];
   for (let i = 0; i < 12; i++) {
     const a = -1.3 + (i / 11) * 2.6 + (rnd() - 0.5) * 0.1;
-    const r = 170 + rnd() * 110;
-    const x = Math.sin(a) * r, z = -Math.cos(a) * r - 40;
+    const r = 230 + rnd() * 120;
+    const x = Math.sin(a) * r * 0.8, z = -Math.cos(a) * r - 170;
     const t = windTurbine({ height: 40 + rnd() * 14 });
     t.position.set(x, height(x, z) - 2, z);
     t.rotation.y = rnd() * 0.5;
@@ -280,7 +280,7 @@ export function build(ctx, def) {
   const di = road.length - 7;
   const pd = road[di], ad = road[di - 1], bd = road[di + 1];
   const rot = Math.atan2(-(bd.x - ad.x), -(bd.z - ad.z));
-  L.makeDoor({ color: '#a8d8ff', frameColor: '#eef6ff', glow: '#fff0e0', style: 'panel' }, pd.x, 0.0, pd.z, rot);
+  L.makeDoor({ color: '#a8d8ff', frameColor: '#eef6ff', glow: '#fff0e0', style: 'panel', beacon: true }, pd.x, 0.0, pd.z, rot);
 
   // keep the player near the street
   L.bounds = {
@@ -295,7 +295,7 @@ export function build(ctx, def) {
         const d = Math.hypot(pos.x - px, pos.z - pz);
         if (d < best) { best = d; bx = px; bz = pz; }
       }
-      const max = 26;
+      const max = 62;
       if (best > max) { pos.x = bx + (pos.x - bx) / best * max; pos.z = bz + (pos.z - bz) / best * max; }
       if (pos.z > 28) pos.z = 28;
       if (pos.z < road[road.length - 2].z) pos.z = road[road.length - 2].z;

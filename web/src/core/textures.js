@@ -225,9 +225,8 @@ export function woodFloorTexture() {
   });
 }
 
-export function tileTexture(color = '#f4fbff', grout = '#b8cdd6', count = 8, key = 'tile') {
-  return cached(key + color + grout + count, () => {
-    const S = 512;
+export function tileTexture(color = '#f4fbff', grout = '#b8cdd6', count = 8, key = 'tile', groutFrac = 0.06, S = 512) {
+  return cached(key + color + grout + count + groutFrac + S, () => {
     const [cr, cg, cb] = hexToRgb(color);
     const [gr, gg, gb] = hexToRgb(grout);
     const hgt = new Float32Array(S * S);
@@ -235,7 +234,7 @@ export function tileTexture(color = '#f4fbff', grout = '#b8cdd6', count = 8, key
     const tones = [];
     for (let i = 0; i < count * count; i++) tones.push(0.95 + rnd() * 0.07);
     const cell = S / count;
-    const gw = Math.max(1.5, cell * 0.06);
+    const gw = Math.max(1.2, cell * groutFrac);
     const { canvas: c } = paint(S, 35, (u, v, fbm, o, x, y) => {
       const cx = x % cell, cy = y % cell;
       const ti = Math.floor(y / cell) * count + Math.floor(x / cell);

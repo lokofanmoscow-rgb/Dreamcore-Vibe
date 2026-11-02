@@ -4,7 +4,8 @@ import { LevelBase } from './common.js';
 import { Terrain, grassLayers, scatterFlowers } from '../core/terrain.js';
 import { makeNoise2D, fbm2, smoothstep, mulberry32 } from '../core/noise.js';
 import { rubberTexture, dirtTexture, flowerSpriteTexture, canvasTexture } from '../core/textures.js';
-import { picketFence, roundTree, bench, boxCollider, circleCollider, bx, cyl, sph, mesh, std, windTurbine } from '../props/props.js';
+import { picketFence, roundTree, bench, boxCollider, circleCollider, bx, cyl, sph, mesh, std, windTurbine, hedge, streetLamp } from '../props/props.js';
+const streetLampSafe = () => streetLamp('#fff2c0');
 
 export const skyOpts = {
   top: '#0f5fd8', mid: '#3aa0f4', horizon: '#bfe8ff', midHeight: 0.3,
@@ -36,13 +37,15 @@ export function build(ctx, def) {
   const SAND = { x: -11, z: -26, r: 4.5 };
   const height = (x, z) => {
     const r = Math.hypot(x, z);
-    const hills = fbm2(noise, x * 0.006, z * 0.006, 4) * 18 * smoothstep(45, 160, r);
+    const hills = fbm2(noise, x * 0.006, z * 0.006, 4) * 18 * smoothstep(45, 160, r) * smoothstep(20, 34, mazeD(x, z));
     const small = fbm2(noise, x * 0.04, z * 0.04, 2) * 0.35 * smoothstep(PAD_R + 1, PAD_R + 6, r);
     return hills + small;
   };
   const sandD = (x, z) => Math.hypot(x - SAND.x, z - SAND.z);
+  const MAZE = { x: 72, z: -64, cells: 9, cell: 3.4 };
+  const mazeD = (x, z) => Math.max(Math.abs(x - MAZE.x), Math.abs(z - MAZE.z));
   const terrain = new Terrain({
-    size: 440, segments: 140, fieldRes: 512, height,
+    size: 620, segments: 190, fieldRes: 700, height,
     grass: (x, z) => smoothstep(PAD_R + 0.2, PAD_R + 1.0, Math.hypot(x, z)) * smoothstep(SAND.r + 0.2, SAND.r + 1.2, sandD(x, z)),
     path: (x, z) => 1 - smoothstep(SAND.r - 0.5, SAND.r + 0.2, sandD(x, z)),
     tint: (x, z) => 0.5 + 0.4 * fbm2(noise, x * 0.03, z * 0.03, 2),
@@ -263,9 +266,10 @@ export function build(ctx, def) {
   L.collide(fence.colliders);
 
   // trees and distant windmills
-  for (let i = 0; i < 18; i++) {
-    const a = rnd() * Math.PI * 2, r = 30 + rnd() * 30;
+  for (let i = 0; i < 70; i++) {
+    const a = rnd() * Math.PI * 2, r = 30 + rnd() * 140;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    if (mazeD(x, z) < 22) continue;
     const t = roundTree(6 + rnd() * 4, '#5fae40', i + 20);
     t.position.set(x, height(x, z), z);
     L.add(t);
@@ -283,16 +287,74 @@ export function build(ctx, def) {
   }
   L.onUpdate((dt) => turbines.forEach((t) => t.userData.update(dt)));
 
-  const fArea = [-60, -60, 60, 60];
-  const out = (x, z) => Math.hypot(x, z) > PAD_R + 1.5 && sandD(x, z) > SAND.r + 1;
-  L.add(scatterFlowers({ terrain, count: Math.round(1400 * q.detail), area: fArea, texture: flowerSpriteTexture('#ffffff', '#ffd23a'), size: 0.2, seed: 9, filter: out }));
-  L.add(scatterFlowers({ terrain, count: Math.round(700 * q.detail), area: fArea, texture: flowerSpriteTexture('#ff8fc0', '#fff2a0', 'pinkflower'), size: 0.2, seed: 10, filter: out }));
+  const fArea = [-150, -170, 180, 140];
+  const out = (x, z) => Math.hypot(x, z) > PAD_R + 1.5 && sandD(x, z) > SAND.r + 1 && mazeD(x, z) > 17;
+  L.add(scatterFlowers({ terrain, count: Math.round(5000 * q.detail), area: fArea, texture: flowerSpriteTexture('#ffffff', '#ffd23a'), size: 0.2, seed: 9, filter: out }));
+  L.add(scatterFlowers({ terrain, count: Math.round(2500 * q.detail), area: fArea, texture: flowerSpriteTexture('#ff8fc0', '#fff2a0', 'pinkflower'), size: 0.2, seed: 10, filter: out }));
 
   // doors: a pink one by the slide is locked, the yellow one stands in the sandbox
   L.makeDecoy({ color: '#ff9cc6', frameColor: '#ffffff' }, 12.5, 0.06, 2, -Math.PI / 2 - 0.3);
-  L.makeDoor({ color: '#ffd84a', frameColor: '#fff4c4', glow: '#fffbe6', style: 'panel' }, SAND.x, height(SAND.x, SAND.z), SAND.z, 0.5);
+  L.makeDecoy({ color: '#ffd84a', frameColor: '#fff4c4' }, SAND.x, height(SAND.x, SAND.z), SAND.z, 0.5);
 
-  L.bounds = { type: 'circle', x: 0, z: 0, r: 75 };
+  // ---------------------------------------------------------------- hedge maze with the real door in its heart
+  {
+    const N = MAZE.cells, C = MAZE.cell;
+    const ox = MAZE.x - (N * C) / 2, oz = MAZE.z - (N * C) / 2;
+    // walls[i][j] = {e: east wall, s: south wall}
+    const walls = [];
+    for (let i = 0; i < N; i++) { walls.push([]); for (let j = 0; j < N; j++) walls[i].push({ e: true, s: true }); }
+    const seen = new Set();
+    const mr = mulberry32(777);
+    const stack = [[0, N - 1]];
+    seen.add('0,' + (N - 1));
+    while (stack.length) {
+      const [i, j] = stack[stack.length - 1];
+      const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([di, dj]) => [i + di, j + dj, di, dj])
+        .filter(([a, b]) => a >= 0 && b >= 0 && a < N && b < N && !seen.has(a + ',' + b));
+      if (!nb.length) { stack.pop(); continue; }
+      const [a, b, di, dj] = nb[Math.floor(mr() * nb.length)];
+      if (di === 1) walls[i][j].e = false;
+      if (di === -1) walls[a][b].e = false;
+      if (dj === 1) walls[i][j].s = false;
+      if (dj === -1) walls[a][b].s = false;
+      seen.add(a + ',' + b);
+      stack.push([a, b]);
+    }
+    // open plaza in the centre
+    const c0 = Math.floor(N / 2) - 1, c1 = Math.floor(N / 2) + 1;
+    for (let i = c0; i <= c1; i++) for (let j = c0; j <= c1; j++) {
+      if (i < c1) walls[i][j].e = false;
+      if (j < c1) walls[i][j].s = false;
+    }
+    const segs = [];
+    const add = (x0, z0, x1, z1) => segs.push([x0, z0, x1, z1]);
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+      const x = ox + i * C, z = oz + j * C;
+      if (walls[i][j].e && i < N - 1) add(x + C, z, x + C, z + C);
+      if (walls[i][j].s && j < N - 1) add(x, z + C, x + C, z + C);
+    }
+    // outer border with an entrance on the south-west corner (towards the playground)
+    for (let k = 0; k < N; k++) {
+      add(ox + k * C, oz, ox + (k + 1) * C, oz);
+      if (k !== 0) add(ox + k * C, oz + N * C, ox + (k + 1) * C, oz + N * C);
+      add(ox, oz + k * C, ox, oz + (k + 1) * C);
+      add(ox + N * C, oz + k * C, ox + N * C, oz + (k + 1) * C);
+    }
+    for (const [x0, z0, x1, z1] of segs) {
+      const horiz = Math.abs(z1 - z0) < 1e-6;
+      const len = Math.hypot(x1 - x0, z1 - z0) + 0.9;
+      const h = hedge(horiz ? len : 0.9, 2.5, horiz ? 0.9 : len, '#3f8a34');
+      const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+      h.position.set(mx, height(mx, mz) - 0.05, mz);
+      L.add(h);
+      L.collide(boxCollider(mx, mz, horiz ? len : 0.9, horiz ? 0.9 : len));
+    }
+    L.makeDoor({ color: '#ffd84a', frameColor: '#fff4c4', glow: '#fffbe6', style: 'panel', beacon: true }, MAZE.x, height(MAZE.x, MAZE.z), MAZE.z, 0);
+    const lamp = streetLampSafe();
+    if (lamp) { lamp.position.set(MAZE.x + 3, height(MAZE.x + 3, MAZE.z + 3), MAZE.z + 3); L.add(lamp); }
+  }
+
+  L.bounds = { type: 'circle', x: 20, z: -20, r: 170 };
   L.spawn = { x: 2, z: 13, yaw: 0.1, pitch: -0.04 };
   L.menuCam = { x: 2, z: 13, yaw: 0.25, y: 1.4, pitch: 0.05 };
   return L;

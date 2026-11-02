@@ -213,56 +213,69 @@ export class AudioSystem {
     });
   }
 
+  // door starts to open: just a soft latch and a quiet, distant chime
   doorCreak() {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;
-    const o = ctx.createOscillator();
-    o.type = 'sawtooth';
-    o.frequency.setValueAtTime(70, t);
-    for (let i = 1; i < 14; i++) o.frequency.linearRampToValueAtTime(60 + Math.random() * 90, t + i * 0.1);
-    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1100; bp.Q.value = 6;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.05, t + 0.2);
-    g.gain.linearRampToValueAtTime(0.03, t + 1.0);
-    g.gain.linearRampToValueAtTime(0.0001, t + 1.5);
-    o.connect(bp).connect(g).connect(this.master);
-    const s = ctx.createGain(); s.gain.value = 0.5; g.connect(s).connect(this.reverbSend);
-    o.start(t); o.stop(t + 1.6);
-    // latch click
     const c = this.noiseSource();
-    const cf = ctx.createBiquadFilter(); cf.type = 'highpass'; cf.frequency.value = 3000;
-    const cg = ctx.createGain(); this.env(cg, t, 0.002, 0.3, 0.04);
+    const cf = ctx.createBiquadFilter(); cf.type = 'bandpass'; cf.frequency.value = 2400; cf.Q.value = 2;
+    const cg = ctx.createGain(); this.env(cg, t, 0.003, 0.05, 0.05);
     c.connect(cf).connect(cg).connect(this.master);
     c.start(t, 0, 0.08);
-    this.chime(523.25, 0.12);
-    setTimeout(() => this.chime(783.99, 0.08), 380);
+    this.chime(523.25, 0.035);
   }
 
-  whoosh() {
-    if (!this.ctx) return;
+  // kept for compatibility: the door transition is silent now (music cross-fades)
+  whoosh() {}
+
+  splash(strength = 1) {
+    if (!this.ctx || this.paused) return;
     const ctx = this.ctx, t = ctx.currentTime;
-    const src = this.noiseSource(true);
-    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.5;
-    bp.frequency.setValueAtTime(200, t);
-    bp.frequency.exponentialRampToValueAtTime(5000, t + 1.4);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.4, t + 0.9);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 2.2);
-    src.connect(bp).connect(g).connect(this.master);
-    const s = ctx.createGain(); s.gain.value = 0.7; g.connect(s).connect(this.reverbSend);
-    src.start(t); src.stop(t + 2.3);
-    // bright swell chord
-    [261.63, 329.63, 392.0, 523.25, 659.25].forEach((f, i) => {
-      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
-      const og = ctx.createGain();
-      og.gain.setValueAtTime(0.0001, t);
-      og.gain.exponentialRampToValueAtTime(0.05, t + 1.0 + i * 0.05);
-      og.gain.exponentialRampToValueAtTime(0.0001, t + 3.0);
-      o.connect(og); og.connect(this.reverbSend); og.connect(this.master);
-      o.start(t); o.stop(t + 3.1);
-    });
+    const k = Math.max(0.2, Math.min(1.5, strength));
+    // body of the splash
+    const s = this.noiseSource();
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(2600, t); lp.frequency.exponentialRampToValueAtTime(500, t + 0.5);
+    const g = ctx.createGain(); this.env(g, t, 0.01, 0.32 * k, 0.55);
+    s.connect(lp).connect(g).connect(this.master);
+    const sv = ctx.createGain(); sv.gain.value = 0.5; g.connect(sv).connect(this.reverbSend);
+    s.start(t, Math.random(), 0.8);
+    // droplets
+    const n = Math.round(6 + 8 * k);
+    for (let i = 0; i < n; i++) {
+      const st = t + 0.05 + Math.random() * 0.6;
+      const o = ctx.createOscillator(); o.type = 'sine';
+      const f = 900 + Math.random() * 1800;
+      o.frequency.setValueAtTime(f, st); o.frequency.exponentialRampToValueAtTime(f * 1.7, st + 0.03);
+      const og = ctx.createGain(); this.env(og, st, 0.002, 0.025 * k, 0.06);
+      o.connect(og).connect(this.master);
+      const ov = ctx.createGain(); ov.gain.value = 0.6; og.connect(ov).connect(this.reverbSend);
+      o.start(st); o.stop(st + 0.12);
+    }
+  }
+
+  land(surface = 'grass', impact = 3) {
+    if (!this.ctx || this.paused) return;
+    this.footstep(surface, 4 + impact);
+    this.footstep(surface, 3 + impact);
+  }
+
+  // continuous water noise while wading
+  setWade(amount) {
+    if (!this.ctx) return;
+    if (!this.wade) {
+      const ctx = this.ctx;
+      const s = this.noiseSource(true);
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 700; bp.Q.value = 0.8;
+      const g = ctx.createGain(); g.gain.value = 0;
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 1.6;
+      const lg = ctx.createGain(); lg.gain.value = 300;
+      lfo.connect(lg).connect(bp.frequency);
+      s.connect(bp).connect(g).connect(this.master);
+      const sv = ctx.createGain(); sv.gain.value = 0.4; g.connect(sv).connect(this.reverbSend);
+      s.start(); lfo.start();
+      this.wade = g;
+    }
+    this.wade.gain.setTargetAtTime(Math.max(0, Math.min(1, amount)) * 0.09, this.ctx.currentTime, 0.15);
   }
 
   click() {
