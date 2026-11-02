@@ -58,7 +58,12 @@ export function build(ctx, def) {
   const road = [];
   for (let z = 30; z >= -160; z -= 2) road.push({ x: 9 * Math.sin((z + 10) / 42) - 4, z });
   const ROAD_HALF = 3.8, WALK_IN = 3.8, WALK_OUT = 6.0;
-  const dRoad = (x, z) => distToPolyline(x, z, road);
+  // road z is monotonic, so only nearby segments need to be checked
+  const dRoad = (x, z) => {
+    const c = Math.round((30 - z) / 2);
+    const i0 = Math.max(0, Math.min(road.length - 2, c - 8)), i1 = Math.max(1, Math.min(road.length - 1, c + 9));
+    return distToPolyline(x, z, road.slice(i0, i1 + 1));
+  };
   const height = (x, z) => {
     const d = dRoad(x, z);
     const base = d < ROAD_HALF + 1.2 ? -0.12 : 0.14;

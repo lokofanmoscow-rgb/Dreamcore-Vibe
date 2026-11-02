@@ -74,6 +74,7 @@ class Game {
     this.levelIndex = index;
     const def = LEVELS[index];
     const level = def.build(this.ctx(), def);
+    level.batchStatic();
     this.level = level;
     this.renderer.applyGrade(level.grade);
     this.camera.far = level.far || 1000;

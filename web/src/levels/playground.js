@@ -138,6 +138,7 @@ export function build(ctx, def) {
     s.add(mesh([cyl(0.012, 0.012, 2.4, -0.25, -1.2, 0, 4), cyl(0.012, 0.012, 2.4, 0.25, -1.2, 0, 4)], std('#c8c8c8', 0.3, 0.9), { cast: false }));
     s.add(mesh([bx(0.6, 0.05, 0.25, 0, -2.42, 0)], [mint, blue, yellow][i]));
     s.userData.phase = i * 1.3;
+    s.userData.dynamic = true;
     seats.push(s);
     swing.add(s);
   }
@@ -157,6 +158,7 @@ export function build(ctx, def) {
   }
   mgr.add(mesh(bars, std('#ffe36a', 0.4, 0.2)));
   mgr.position.set(0, 0.06, -10);
+  mgr.userData.dynamic = true;
   L.add(mgr);
   L.collide(circleCollider(0, -10, 1.8));
   L.onUpdate((dt) => { mgr.rotation.y += dt * 0.25; });
@@ -200,6 +202,7 @@ export function build(ctx, def) {
     g.position.set(x, 0.06, z);
     g.rotation.y = rnd() * 3;
     g.userData.body = body;
+    body.userData.dynamic = true;
     L.add(g);
     riders.push(g);
     L.collide(circleCollider(x, z, 0.5));
@@ -233,6 +236,7 @@ export function build(ctx, def) {
     const base = new THREE.Vector3(10.8 + (rnd() - 0.5) * 0.8, 3.0 + rnd() * 1.2, -14 + (rnd() - 0.5) * 0.8);
     m.position.copy(base);
     m.userData.base = base;
+    m.userData.dynamic = true;
     L.add(m);
     balloons.push(m);
   }

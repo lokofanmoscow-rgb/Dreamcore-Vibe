@@ -157,6 +157,7 @@ export function windTurbine({ height = 38, color = '#f4f6f8', bladeLen = 17 } = 
   group.add(nacelle);
   const rotor = new THREE.Group();
   rotor.position.set(0, height + 0.6, 2.6);
+  rotor.userData.dynamic = true;
   const blades = [];
   for (let i = 0; i < 3; i++) {
     const shape = new THREE.Shape();

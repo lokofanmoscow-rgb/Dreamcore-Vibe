@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createSky } from '../core/sky.js';
 import { isCached } from '../core/textures.js';
 import { Door } from '../props/door.js';
@@ -123,6 +124,65 @@ export class LevelBase {
     this.collide(d.allColliders());
     this.decoys.push(d);
     return d;
+  }
+
+  // Merge static meshes that share an identical-looking material into one draw
+  // call each. Phones are far more limited by draw calls than by triangles.
+  batchStatic() {
+    const groups = new Map();
+    const texKey = (t) => (t ? `${t.source.uuid}:${t.repeat.x.toFixed(3)},${t.repeat.y.toFixed(3)}:${t.offset.x.toFixed(3)},${t.offset.y.toFixed(3)}` : '-');
+    const ok = new Set(['MeshStandardMaterial', 'MeshLambertMaterial', 'MeshBasicMaterial']);
+    this.scene.updateMatrixWorld(true);
+    const isDynamic = (o) => { for (let p = o; p; p = p.parent) if (p.userData && p.userData.dynamic) return true; return false; };
+    this.scene.traverse((o) => {
+      if (!o.isMesh || o.isInstancedMesh || Array.isArray(o.material) || !o.geometry) return;
+      const m = o.material;
+      if (!ok.has(m.type) || Object.prototype.hasOwnProperty.call(m, 'onBeforeCompile')) return;
+      if (m.transparent || m.blending !== THREE.NormalBlending || o.renderOrder !== 0 || !o.visible) return;
+      if (o.geometry.morphAttributes && Object.keys(o.geometry.morphAttributes).length) return;
+      if (isDynamic(o)) return;
+      const key = [m.type, m.color && m.color.getHexString(), m.roughness, m.metalness, m.emissive && m.emissive.getHexString(), m.emissiveIntensity,
+        texKey(m.map), texKey(m.normalMap), texKey(m.emissiveMap), m.side, m.alphaTest, m.toneMapped, m.fog, o.castShadow, o.receiveShadow,
+        m.normalScale ? m.normalScale.x : 0].join('|');
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(o);
+    });
+    let merged = 0;
+    for (const list of groups.values()) {
+      if (list.length < 2) continue;
+      const geos = [];
+      for (const o of list) {
+        let g = o.geometry.clone();
+        for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') g.deleteAttribute(k);
+        if (!g.attributes.normal) g.computeVertexNormals();
+        if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+        if (!g.index) {
+          const n = g.attributes.position.count;
+          const idx = new (n > 65535 ? Uint32Array : Uint16Array)(n);
+          for (let i = 0; i < n; i++) idx[i] = i;
+          g.setIndex(new THREE.BufferAttribute(idx, 1));
+        }
+        g.morphAttributes = {};
+        g.applyMatrix4(o.matrixWorld);
+        geos.push(g);
+      }
+      const mg = mergeGeometries(geos, false);
+      geos.forEach((g) => g.dispose());
+      if (!mg) continue;
+      const first = list[0];
+      const mesh = new THREE.Mesh(mg, first.material);
+      mesh.castShadow = first.castShadow;
+      mesh.receiveShadow = first.receiveShadow;
+      mesh.name = 'batched';
+      this.scene.add(mesh);
+      for (const o of list) {
+        o.parent.remove(o);
+        o.geometry.dispose();
+      }
+      merged += list.length;
+    }
+    this.batchedCount = merged;
+    return merged;
   }
 
   update(dt, player) {

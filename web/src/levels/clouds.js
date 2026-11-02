@@ -159,6 +159,7 @@ export function build(ctx, def) {
     const m = new THREE.Mesh(puff(rnd, 6 + rnd() * 8, 7), puffMat);
     m.position.set(Math.cos(a) * r, 10 + rnd() * 45, Math.sin(a) * r);
     m.userData.bob = rnd() * 6;
+    m.userData.dynamic = true;
     L.add(m);
     puffs.push(m);
   }

@@ -132,7 +132,8 @@ export function build(ctx, def) {
 
   const rnd = mulberry32(42);
   const plants = [];
-  const density = Math.max(0.5, q.detail);
+  const density = Math.max(0.4, q.detail);
+  const LEAVES = q.detail >= 1 ? 3 : 2;
   const addRows = (x0, x1, spacingX, spacingZ, near) => {
     for (let x = x0; x <= x1; x += spacingX) {
       for (const side of [-1, 1]) {
@@ -145,75 +146,83 @@ export function build(ctx, def) {
       }
     }
   };
-  const nearRows = 10 + Math.round(6 * density);
+  const nearRows = 6 + Math.round(6 * density);
   addRows(1.85, 1.85 + nearRows * 0.95, 0.95, 0.72 / Math.min(1.2, density), true);
-  addRows(2.0 + nearRows * 0.95, 48, 1.35 / density, 1.0 / density, false);
+  addRows(2.0 + nearRows * 0.95, 44, 1.5 / density, 1.1 / density, false);
   // a ring behind the start and around the end so the field feels endless
   for (let i = 0; i < 1400 * density; i++) {
     const x = (rnd() - 0.5) * 100, z = MAIN.z0 + 6 + rnd() * 30;
     plants.push({ x, z, near: false });
   }
 
-  const nTotal = plants.length;
-  const nNear = plants.filter((p) => p.near).length;
   const headGeo = headGeometry(0.34, 4, 16);
   const headGeoLo = headGeometry(0.34, 2, 10);
   const stemGeo = new THREE.CylinderGeometry(0.022, 0.032, 1, 5, 1, true).translate(0, 0.5, 0);
   const backGeo = new THREE.ConeGeometry(0.13, 0.12, 10, 1, true).rotateX(-Math.PI / 2).translate(0, 0, -0.08);
   const leafGeo = leafGeometry();
 
-  const headsNear = new THREE.InstancedMesh(headGeo, headMat, nNear);
-  const headsFar = new THREE.InstancedMesh(headGeoLo, headMat, nTotal - nNear);
-  const backs = new THREE.InstancedMesh(backGeo, backMat, nNear);
-  const stems = new THREE.InstancedMesh(stemGeo, stemMat, nTotal);
-  const leaves = new THREE.InstancedMesh(leafGeo, leafMat, nNear * 3);
-  const m = new THREE.Matrix4(), q4 = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3();
-  let iN = 0, iF = 0, iS = 0, iL = 0;
+  // split the field into chunks along the path so cameras (and the shadow
+  // camera) can cull what they don't see
+  const CHUNK = 14;
+  const chunks = new Map();
   for (const pl of plants) {
-    const gy = height(pl.x, pl.z);
-    const h = 1.55 + rnd() * 0.7;
-    // stem
-    p.set(pl.x, gy, pl.z);
-    e.set((rnd() - 0.5) * 0.08, 0, (rnd() - 0.5) * 0.08);
-    q4.setFromEuler(e);
-    s.set(1, h, 1);
-    m.compose(p, q4, s);
-    stems.setMatrixAt(iS++, m);
-    // head facing +Z (toward the start of the path), nodding a little
-    p.set(pl.x + e.z * -h * 0.5, gy + h, pl.z + e.x * h * 0.5);
-    e.set(-0.25 - rnd() * 0.35, (rnd() - 0.5) * 0.6, (rnd() - 0.5) * 0.4);
-    q4.setFromEuler(e);
-    const hs = 0.85 + rnd() * 0.35;
-    s.set(hs, hs, hs);
-    m.compose(p, q4, s);
-    if (pl.near) {
-      headsNear.setMatrixAt(iN, m);
-      backs.setMatrixAt(iN, m);
-      iN++;
-      for (let k = 0; k < 3; k++) {
-        const ly = gy + h * (0.35 + k * 0.2);
-        const a = rnd() * Math.PI * 2;
-        p.set(pl.x, ly, pl.z);
-        e.set(0, a, 0);
-        q4.setFromEuler(e);
-        const ls = 0.8 + rnd() * 0.5;
-        s.set(ls, ls, ls);
-        m.compose(p, q4, s);
-        leaves.setMatrixAt(iL++, m);
+    const key = Math.floor(pl.z / CHUNK) + ':' + (pl.x < 0 ? 'l' : 'r');
+    if (!chunks.has(key)) chunks.set(key, []);
+    chunks.get(key).push(pl);
+  }
+  const m = new THREE.Matrix4(), q4 = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3();
+  for (const list of chunks.values()) {
+    const nNear = list.filter((pl) => pl.near).length;
+    const nFar = list.length - nNear;
+    const headsNear = nNear ? new THREE.InstancedMesh(headGeo, headMat, nNear) : null;
+    const backs = nNear ? new THREE.InstancedMesh(backGeo, backMat, nNear) : null;
+    const leaves = nNear ? new THREE.InstancedMesh(leafGeo, leafMat, nNear * LEAVES) : null;
+    const headsFar = nFar ? new THREE.InstancedMesh(headGeoLo, headMat, nFar) : null;
+    const stems = new THREE.InstancedMesh(stemGeo, stemMat, list.length);
+    let iN = 0, iF = 0, iS = 0, iL = 0;
+    for (const pl of list) {
+      const gy = height(pl.x, pl.z);
+      const h = 1.55 + rnd() * 0.7;
+      p.set(pl.x, gy, pl.z);
+      e.set((rnd() - 0.5) * 0.08, 0, (rnd() - 0.5) * 0.08);
+      q4.setFromEuler(e);
+      s.set(1, h, 1);
+      m.compose(p, q4, s);
+      stems.setMatrixAt(iS++, m);
+      // head facing +Z (toward the start of the path), nodding a little
+      p.set(pl.x + e.z * -h * 0.5, gy + h, pl.z + e.x * h * 0.5);
+      e.set(-0.25 - rnd() * 0.35, (rnd() - 0.5) * 0.6, (rnd() - 0.5) * 0.4);
+      q4.setFromEuler(e);
+      const hs = 0.85 + rnd() * 0.35;
+      s.set(hs, hs, hs);
+      m.compose(p, q4, s);
+      if (pl.near) {
+        headsNear.setMatrixAt(iN, m);
+        backs.setMatrixAt(iN, m);
+        iN++;
+        for (let k = 0; k < LEAVES; k++) {
+          p.set(pl.x, gy + h * (0.35 + k * (0.4 / LEAVES)), pl.z);
+          e.set(0, rnd() * Math.PI * 2, 0);
+          q4.setFromEuler(e);
+          const ls = 0.8 + rnd() * 0.5;
+          s.set(ls, ls, ls);
+          m.compose(p, q4, s);
+          leaves.setMatrixAt(iL++, m);
+        }
+      } else {
+        headsFar.setMatrixAt(iF++, m);
       }
-    } else {
-      headsFar.setMatrixAt(iF++, m);
+    }
+    for (const im of [headsNear, backs, leaves, headsFar, stems]) {
+      if (!im) continue;
+      im.instanceMatrix.needsUpdate = true;
+      im.castShadow = im !== headsFar && (im !== leaves || q.detail >= 1);
+      im.receiveShadow = true;
+      im.computeBoundingSphere();
+      im.boundingSphere.radius += 1.5; // room for the wind sway
+      L.add(im);
     }
   }
-  for (const im of [headsNear, headsFar, backs, stems, leaves]) {
-    im.instanceMatrix.needsUpdate = true;
-    im.castShadow = true;
-    im.receiveShadow = true;
-    im.frustumCulled = false;
-    L.add(im);
-  }
-  headsFar.castShadow = false;
-  leaves.castShadow = q.detail >= 1;
 
   // walls of sunflowers: keep the player on the paths
   const t = 0.4;
@@ -250,6 +259,7 @@ export function build(ctx, def) {
 
   L.spawn = { x: 0, z: 6, yaw: 0, pitch: 0.02 };
   L.menuCam = { x: 0, z: 6, yaw: 0, y: 1.6, pitch: 0.04 };
+  L.far = 260;
   L.bounds = { type: 'box', x0: CROSS.x0 - 1, x1: CROSS.x1 + 1, z0: MAIN.z1 - 1, z1: MAIN.z0 + 1 };
   return L;
 }

@@ -65,6 +65,7 @@ export class Door {
     this.glowColor = new THREE.Color(glow);
     const group = new THREE.Group();
     group.name = 'door';
+    group.userData.dynamic = true;
     this.group = group;
 
     const doorMat = new THREE.MeshStandardMaterial({ color, roughness, metalness: 0.0 });
