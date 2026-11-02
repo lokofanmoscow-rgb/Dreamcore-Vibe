@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Dreamcore Vibe</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <div id="touch-layer"></div>
+
+  <div id="stick"><div id="stick-knob"></div></div>
+
+  <div id="hud" class="hidden">
+    <button id="btn-pause" class="ui-btn round" aria-label="Пауза"><span></span><span></span></button>
+    <div id="fps"></div>
+    <div id="level-title"><div class="lt-num"></div><div class="lt-name"></div></div>
+    <div id="hint"></div>
+  </div>
+
+  <div id="menu" class="screen hidden">
+    <div class="menu-inner">
+      <div class="logo">
+        <div class="logo-main">DREAMCORE</div>
+        <div class="logo-sub">v i b e</div>
+      </div>
+      <div class="menu-buttons">
+        <button class="ui-btn big" id="btn-continue">Продолжить</button>
+        <button class="ui-btn big" id="btn-start">Начать сон</button>
+        <button class="ui-btn" id="btn-levels">Уровни</button>
+        <button class="ui-btn" id="btn-settings">Настройки</button>
+        <button class="ui-btn ghost" id="btn-exit">Выход</button>
+      </div>
+    </div>
+    <div class="menu-foot">найди двери · проснись, если сможешь</div>
+  </div>
+
+  <div id="settings" class="screen hidden">
+    <div class="panel">
+      <h2>Настройки</h2>
+      <div class="row">
+        <label>Графика</label>
+        <div class="seg" id="quality-seg">
+          <button class="ui-btn seg-btn" data-q="low">Низкая</button>
+          <button class="ui-btn seg-btn" data-q="medium">Средняя</button>
+          <button class="ui-btn seg-btn" data-q="high">Высокая</button>
+          <button class="ui-btn seg-btn" data-q="ultra">Ультра</button>
+        </div>
+      </div>
+      <div class="qdesc" id="quality-desc"></div>
+      <div class="row"><label>Музыка</label><input type="range" id="set-music" min="0" max="1" step="0.05"></div>
+      <div class="row"><label>Звуки</label><input type="range" id="set-sfx" min="0" max="1" step="0.05"></div>
+      <div class="row"><label>Чувствительность</label><input type="range" id="set-sens" min="0.3" max="2.5" step="0.05"></div>
+      <div class="row"><label>Поле зрения</label><input type="range" id="set-fov" min="55" max="95" step="1"><span class="val" id="fov-val"></span></div>
+      <div class="row toggles">
+        <button class="ui-btn toggle" id="set-bob">Покачивание камеры</button>
+        <button class="ui-btn toggle" id="set-invert">Инверсия Y</button>
+        <button class="ui-btn toggle" id="set-fps">Показывать FPS</button>
+      </div>
+      <div class="row end"><button class="ui-btn big" id="btn-settings-back">Готово</button></div>
+    </div>
+  </div>
+
+  <div id="levels" class="screen hidden">
+    <div class="panel wide">
+      <h2>Уровни</h2>
+      <div id="level-grid"></div>
+      <div class="row end"><button class="ui-btn big" id="btn-levels-back">Назад</button></div>
+    </div>
+  </div>
+
+  <div id="pause" class="screen hidden">
+    <div class="panel narrow">
+      <h2>Пауза</h2>
+      <div class="menu-buttons">
+        <button class="ui-btn big" id="btn-resume">Продолжить</button>
+        <button class="ui-btn" id="btn-pause-settings">Настройки</button>
+        <button class="ui-btn ghost" id="btn-to-menu">В главное меню</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="fade"></div>
+  <div id="loading"><div class="spinner"></div><div class="loading-text">засыпаем…</div></div>
+
+  <script src="game.js"></script>
+</body>
+</html>

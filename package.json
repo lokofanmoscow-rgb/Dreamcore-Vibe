@@ -1,0 +1,14 @@
+{
+  "name": "dreamcore-vibe",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dreamcore walking game for Android (three.js + WebView)",
+  "scripts": {
+    "build": "node tools/build-web.mjs",
+    "dev": "node tools/build-web.mjs --serve"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10",
+    "three": "0.180.0"
+  }
+}
