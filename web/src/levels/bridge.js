@@ -62,9 +62,9 @@ function along(z0, z1, step, make) {
 }
 
 export const skyOpts = {
-  top: '#7f97a8', mid: '#9db1bd', horizon: '#b7c6cd', midHeight: 0.4,
-  sunDir: [0.3, 0.5, -0.8], sunGlow: 0.12, sunGlow2: 0.3, sunSize: 0.0,
-  cloudCover: 0.6, cloudScale: 0.6, cloudSoft: 0.6, cloudColor: '#c9d4da', cloudShade: '#8a9aa6', haze: 0.8,
+  top: '#4f8fd0', mid: '#86b8e2', horizon: '#d4e4ec', midHeight: 0.33,
+  sunDir: [-0.45, 0.7, 0.55], sunColor: '#fff8e8', sunGlow: 0.25, sunGlow2: 1.1, sunSize: 0.026, sunIntensity: 3.0,
+  cloudCover: 0.14, cloudScale: 0.7, cloudSoft: 0.4, cloudColor: '#ffffff', cloudShade: '#c4d4e2', haze: 0.3,
 };
 
 export function build(ctx, def) {
@@ -74,13 +74,13 @@ export function build(ctx, def) {
   const rnd = mulberry32(2024);
 
   L.setupSky(skyOpts);
-  L.setupSun({ dir: [0.35, 0.65, -0.6], color: '#e8eef2', intensity: 1.3, area: 34 });
-  L.setupHemi('#c8d6de', '#5a6a72', 1.25);
-  L.setupFogExp('#a5b5be', 0.0085);
-  L.envFromSky(0.6);
+  L.setupSun({ dir: skyOpts.sunDir, color: '#fff4e2', intensity: 3.4, area: 40, far: 240 });
+  L.setupHemi('#d2e4f2', '#8a969a', 1.05);
+  L.setupFogExp('#d0dee6', 0.00115);
+  L.envFromSky(0.85);
 
   // ---------------------------------------------------------------- deck
-  const concrete = rep(concreteTexture('#c9c9c4'), 0.5, 0.5);
+  const concrete = rep(concreteTexture('#e4e4de'), 0.5, 0.5);
   const concMat = new THREE.MeshStandardMaterial({ map: concrete, roughness: 0.85 });
   const deck = new THREE.Mesh(along(Z0, Z1, 8, (len) => new THREE.BoxGeometry(HALF * 2, 1.6, len + 0.05).translate(0, -0.8, 0)), concMat);
   deck.receiveShadow = true;
@@ -109,8 +109,8 @@ export function build(ctx, def) {
     g.translate(0, 0, -(len + 0.02) / 2);
     return g;
   }), concMat));
-  L.add(new THREE.Mesh(along(Z0, Z1, 8, (len) => new THREE.BoxGeometry(0.06, 1.0, len).translate(0, 1.35, 0)),
-    new THREE.MeshStandardMaterial({ color: '#2f8a5a', roughness: 0.6 })));
+  L.add(new THREE.Mesh(along(Z0, Z1, 8, (len) => new THREE.BoxGeometry(0.06, 0.55, len).translate(0, 1.1, 0)),
+    new THREE.MeshStandardMaterial({ color: '#2c7a52', roughness: 0.6 })));
   // outer parapets with steel guardrails
   for (const sx of [-1, 1]) {
     L.add(new THREE.Mesh(along(Z0, Z1, 8, (len) => new THREE.BoxGeometry(0.5, 0.9, len).translate(sx * (HALF - 0.25), 0.45, 0)), concMat));
@@ -134,7 +134,7 @@ export function build(ctx, def) {
       new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 9.5, 0), new THREE.Vector3(-sx * 0.6, 11.2, 0), new THREE.Vector3(-sx * 2.4, 11.6, 0),
     ]);
     return mergeGeometries([
-      new THREE.TubeGeometry(curve, 16, 0.11, 6, false),
+      new THREE.TubeGeometry(curve, 16, 0.15, 6, false),
       new THREE.BoxGeometry(0.9, 0.16, 0.36).translate(-sx * 2.6, 11.55, 0),
     ].map((g) => (g.index ? g.toNonIndexed() : g)));
   };
@@ -142,7 +142,7 @@ export function build(ctx, def) {
   const headMat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#fffdf4').multiplyScalar(1.6) });
   for (const sx of [-1, 1]) {
     const pts = [];
-    for (let z = Z0 - 4; z > Z1; z -= 26) pts.push(z);
+    for (let z = Z0 - 4; z > Z1; z -= 22) pts.push(z);
     const im = new THREE.InstancedMesh(lampGeo(sx), lampMat, pts.length);
     const heads = new THREE.InstancedMesh(new THREE.BoxGeometry(0.7, 0.05, 0.28).translate(-sx * 2.6, 11.45, 0), headMat, pts.length);
     const m = new THREE.Matrix4();
@@ -191,7 +191,7 @@ export function build(ctx, def) {
   const wn = waterNormalTexture().clone();
   wn.repeat.set(120, 120);
   const sea = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({
-    color: '#5f7480', roughness: 0.12, metalness: 0.1, normalMap: wn, normalScale: new THREE.Vector2(0.5, 0.5),
+    color: '#3f6f88', roughness: 0.07, metalness: 0.25, normalMap: wn, normalScale: new THREE.Vector2(0.7, 0.7),
   }));
   sea.position.set(0, -24, -400);
   L.add(sea);

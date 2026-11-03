@@ -49,8 +49,8 @@ export const LEVELS = [
   },
   {
     id: 'bridge', title: 'Мост в никуда', music: 'fogbridge', ambience: 'bridge', build: bridge.build,
-    card: 'linear-gradient(160deg, #8fa2ae 0%, #b7c6cd 50%, #4a565e 100%)',
-    grade: { saturation: 0.9, contrast: 1.05, tint: [0.97, 1.0, 1.03], vignette: 0.32, bloomStrength: 0.35, bloomThreshold: 0.9, distortion: 0.1 },
+    card: 'linear-gradient(160deg, #4f8fd0 0%, #d4e4ec 50%, #3f6f88 100%)',
+    grade: { saturation: 1.0, contrast: 1.03, tint: [1.02, 1.0, 0.97], vignette: 0.3, bloomStrength: 0.45, bloomThreshold: 0.86, distortion: 0.04, chroma: 0.0, grain: 0.0, vhs: 1, exposure: 1.02 },
   },
   {
     id: 'store', title: 'Пустой магазин', music: 'mall', ambience: 'mall', build: store.build,

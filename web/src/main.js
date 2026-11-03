@@ -145,6 +145,8 @@ class Game {
     $('btn-exit').classList.toggle('hidden', !bridge);
     this.menuTime = 0;
     this.audio.setHum(0);
+    const osd = document.getElementById('vhs-osd');
+    if (osd) osd.classList.remove('on');
     this.audio.setAmbience(null);
   }
 
@@ -170,6 +172,7 @@ class Game {
     this.audio.setAmbience(this.level.ambience);
     this.fadeTo(false);
     this.showTitle();
+    this.updateOsd();
     if (!progress.hinted) {
       progress.hinted = true;
       saveProgress();
@@ -177,6 +180,12 @@ class Game {
         ? 'левый палец — идти   ·   правый — смотреть   ·   ⬆ — прыжок'
         : 'WASD — идти   ·   мышь — смотреть   ·   Shift — бежать   ·   пробел — прыжок');
     }
+  }
+
+  updateOsd() {
+    const on = !!(this.level && this.level.grade && this.level.grade.vhs) && this.state !== 'menu';
+    const el = document.getElementById('vhs-osd');
+    if (el) el.classList.toggle('on', on);
   }
 
   showTitle() {
@@ -453,7 +462,19 @@ class Game {
     this.audio.update(dt);
     if (skipRender) return;
     this.renderer.render(lv.scene, this.camera, dt);
+    this.tickOsd(dt);
     this.trackFps(dt);
+  }
+
+  tickOsd(dt) {
+    if (!this.level || !this.level.grade || !this.level.grade.vhs) return;
+    this.osdTime = (this.osdTime || 11 * 3600 + 47 * 60) + dt;
+    const t = Math.floor(this.osdTime);
+    if (t === this.osdShown) return;
+    this.osdShown = t;
+    const h = Math.floor(t / 3600) % 12 || 12, m = Math.floor(t / 60) % 60, s = t % 60;
+    const el = document.getElementById('osd-time');
+    if (el) el.textContent = `AM ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   }
 
   trackFps(dt) {

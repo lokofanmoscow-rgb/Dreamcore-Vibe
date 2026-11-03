@@ -20,6 +20,7 @@ const DreamShader = {
     tint: { value: new THREE.Vector3(1, 1, 1) },
     lift: { value: new THREE.Vector3(0, 0, 0) },
     softGlow: { value: 0.0 },
+    vhs: { value: 0.0 },
   },
   vertexShader: /* glsl */`
     varying vec2 vUv;
@@ -30,7 +31,7 @@ const DreamShader = {
   fragmentShader: /* glsl */`
     uniform sampler2D tDiffuse;
     uniform vec2 resolution;
-    uniform float time, distortion, chroma, vignette, grain, saturation, contrast, softGlow;
+    uniform float time, distortion, chroma, vignette, grain, saturation, contrast, softGlow, vhs;
     uniform vec3 tint, lift;
     varying vec2 vUv;
 
@@ -50,6 +51,34 @@ const DreamShader = {
       col.r = texture2D(tDiffuse, duv + dir).r;
       col.g = texture2D(tDiffuse, duv).g;
       col.b = texture2D(tDiffuse, duv - dir).b;
+
+      if (vhs > 0.0) {
+        // camcorder tape: soft luma, smeared and shifted chroma, line jitter,
+        // a slow tracking band and head-switching noise at the bottom
+        vec2 px = 1.0 / resolution;
+        float line = floor(vUv.y * resolution.y / 2.0);
+        float jit = (hash(vec2(line, floor(time * 24.0))) - 0.5) * 1.6 * px.x;
+        float bandPos = fract(time * 0.035);
+        float band = 1.0 - smoothstep(0.0, 0.025, abs(vUv.y - bandPos));
+        float head = 1.0 - smoothstep(0.0, 0.022, vUv.y);
+        vec2 vu = duv + vec2(jit + band * (hash(vec2(line, time)) - 0.5) * 10.0 * px.x + head * 14.0 * px.x * (hash(vec2(line * 1.7, time)) - 0.2), 0.0);
+        vec3 a = texture2D(tDiffuse, vu).rgb;
+        vec3 b1 = texture2D(tDiffuse, vu + vec2(1.4 * px.x, 0.0)).rgb;
+        vec3 b2 = texture2D(tDiffuse, vu - vec2(1.4 * px.x, 0.0)).rgb;
+        float Y = dot(a * 0.5 + (b1 + b2) * 0.25, vec3(0.299, 0.587, 0.114));
+        vec3 cs = vec3(0.0);
+        for (int k = -3; k <= 3; k++) cs += texture2D(tDiffuse, vu + vec2((float(k) * 2.2 + 3.0) * px.x, 0.0)).rgb;
+        cs /= 7.0;
+        float I = dot(cs, vec3(0.596, -0.274, -0.322)) * 0.9;
+        float Q = dot(cs, vec3(0.211, -0.523, 0.312)) * 0.9;
+        float cn = (hash(vec2(line, floor(time * 30.0) + 3.0)) - 0.5) * 0.02;
+        vec3 v = vec3(Y + 0.956 * (I + cn) + 0.621 * Q, Y - 0.272 * (I + cn) - 0.647 * Q, Y - 1.106 * (I + cn) + 1.703 * Q);
+        v += (hash(gl_FragCoord.xy * 0.5 + time) - 0.5) * 0.035;
+        v += band * 0.05 + head * (hash(gl_FragCoord.xy + time * 3.0) - 0.4) * 0.25;
+        v = v * 0.9 + 0.035;                      // lifted blacks, softer whites
+        v *= 1.0 - 0.045 * (0.5 + 0.5 * sin(gl_FragCoord.y * 3.14159));
+        col = mix(col, v, vhs);
+      }
 
       if (softGlow > 0.0) {
         // cheap dreamy halation: widen highlights a little
@@ -169,6 +198,7 @@ export class Renderer {
     u.distortion.value = gr.distortion;
     u.chroma.value = gr.chroma;
     u.grain.value = gr.grain;
+    u.vhs.value = gr.vhs || 0;
     // Without bloom, emulate a little halation so bright things still glow.
     u.softGlow.value = this.bloomPass ? 0.0 : 0.6;
     if (this.bloomPass) {
