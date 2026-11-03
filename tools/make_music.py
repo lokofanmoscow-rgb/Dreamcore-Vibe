@@ -2,7 +2,8 @@
 
     python tools/make_music.py web/audio
 
-Produces seamless loops (pastel_lullaby, aqua_halls, cloud_choir) — dreamy
+Produces seamless loops (pastel_lullaby, aqua_halls, cloud_choir, fog_bridge,
+empty_mall, courtyard_night, backrooms_hum, retro_hills) — dreamy
 lo-fi pads, music box, glassy plucks, tape wobble and big reverb. No vocals.
 Requires numpy + scipy + ffmpeg.
 """
@@ -285,9 +286,195 @@ def cloud_choir(rng):
     return finish(dry, send, ir, L, rng, wet=0.8, lp=10000)
 
 
+def fm_piano(freq, dur, rng, bright=1.0):
+    """soft electric piano (two-operator FM) for the mallsoft track"""
+    n = int(dur * SR)
+    t = np.arange(n) / SR
+    env = np.exp(-t * 1.6) * np.minimum(1, t / 0.005)
+    mod = np.sin(2 * np.pi * freq * 1.0 * t) * (1.6 * bright) * np.exp(-t * 4)
+    car = np.sin(2 * np.pi * freq * t + mod)
+    car += 0.15 * np.sin(2 * np.pi * freq * 2.0 * t + mod * 0.5)
+    return car * env
+
+
+def square(freq, dur, duty=0.5, harmonics=12):
+    n = int(dur * SR)
+    t = np.arange(n) / SR
+    out = np.zeros(n)
+    for h in range(1, harmonics + 1):
+        a = np.sin(np.pi * h * duty) / h
+        out += a * np.sin(2 * np.pi * freq * h * t)
+    return out * 0.6
+
+
+def bitcrush(x, bits=8, rate=11025):
+    step = max(1, int(SR / rate))
+    y = x[::step].repeat(step, axis=0)[: len(x)]
+    q = 2 ** (bits - 1)
+    return np.round(y * q) / q
+
+
+def fog_bridge(rng):
+    """slow drones over the sea, a far-away foghorn, wind"""
+    L = 112.0
+    n = int((L + 8) * SR)
+    dry = np.zeros((n, 2))
+    send = np.zeros((n, 2))
+    roots = [45, 43, 41, 43]
+    for k in range(8):
+        t0 = k * L / 8
+        note = roots[k % 4]
+        dur = L / 8 + 6
+        for i, iv in enumerate([0, 7, 12, 16]):
+            p = lowpass(saw_pad(midi(note + iv), dur, rng, detune=0.1, harmonics=6, voices=3), 900, 1)
+            p *= env_adsr(int(dur * SR), 4.0, 2.0, 0.8, 5.0)
+            place(dry, p, t0, pan=(i - 1.5) * 0.4, gain=0.05)
+            place(send, p, t0, pan=(i - 1.5) * 0.4, gain=0.09)
+    for t0 in [10, 46, 82]:
+        horn = sine_stack(midi(33), 6, [(1, 1.0), (2, 0.35), (3, 0.15)], rng) * env_adsr(int(6 * SR), 1.2, 1.0, 0.7, 3.0)
+        place(dry, lowpass(horn, 400, 2), t0, pan=-0.3, gain=0.07)
+        place(send, horn, t0, pan=-0.3, gain=0.12)
+    wind = lowpass(rng.normal(0, 1, n), 500, 2) * (0.6 + 0.4 * np.sin(2 * np.pi * np.arange(n) / SR / 17))
+    dry[:, 0] += wind * 0.02
+    dry[:, 1] += np.roll(wind, 3000) * 0.02
+    ir = make_ir(7.0, 0.55, rng, 3500)
+    return finish(dry, send, ir, L, rng, wet=0.8, lp=6000)
+
+
+def empty_mall(rng):
+    """muffled easy-listening heard from another room of an empty store"""
+    bpm = 76
+    beat = 60 / bpm
+    bar = beat * 4
+    prog = [[53, 57, 60, 64, 67], [52, 55, 59, 62, 69], [50, 53, 57, 60, 64], [55, 59, 62, 65, 69]]
+    bars = 32
+    L = bars * bar
+    n = int((L + 6) * SR)
+    dry = np.zeros((n, 2))
+    send = np.zeros((n, 2))
+    mel = [72, 71, 69, 67, 69, 72, 74, 72, 71, 67, 69, 71]
+    for b in range(bars):
+        ch = prog[b % 4]
+        t0 = b * bar
+        for k in (0, 2.5):
+            for i, note in enumerate(ch[:4]):
+                s = fm_piano(midi(note), 2.6, rng, 0.8)
+                place(dry, s, t0 + k * beat + i * 0.012, pan=(i - 1.5) * 0.3, gain=0.05)
+                place(send, s, t0 + k * beat, pan=(i - 1.5) * 0.3, gain=0.06)
+        bass = sine_stack(midi(ch[0] - 24), bar, [(1, 1.0), (2, 0.3)], rng) * env_adsr(int(bar * SR), 0.02, 0.6, 0.6, 0.4)
+        place(dry, bass, t0, gain=0.12)
+        if b % 8 >= 2:
+            for k in range(4):
+                if rng.random() < 0.6:
+                    note = mel[(b * 4 + k) % len(mel)]
+                    s = fm_piano(midi(note), 1.8, rng, 1.2)
+                    place(dry, s, t0 + k * beat, pan=0.2, gain=0.06)
+                    place(send, s, t0 + k * beat, pan=0.2, gain=0.08)
+        for k in range(4):
+            hh = highpass(rng.normal(0, 1, int(0.05 * SR)), 7000, 2) * np.exp(-np.arange(int(0.05 * SR)) / (0.01 * SR))
+            place(dry, hh, t0 + (k + 0.5) * beat, 0.1, 0.012)
+    ir = make_ir(3.5, 1.2, rng, 3000)
+    out = finish(dry, send, ir, L, rng, wet=0.65, lp=2200, sat=1.1)
+    return out
+
+
+def courtyard_night(rng):
+    """quiet night between tall buildings: soft high pads, sparse plucks, city drone"""
+    bpm = 60
+    bar = 4.0
+    chords = [[62, 66, 69, 73], [61, 64, 68, 71], [59, 62, 66, 69], [57, 61, 64, 68]]
+    bars = 26
+    L = bars * bar
+    n = int((L + 8) * SR)
+    dry = np.zeros((n, 2))
+    send = np.zeros((n, 2))
+    for b in range(0, bars, 2):
+        ch = chords[(b // 2) % 4]
+        for i, note in enumerate(ch):
+            dur = bar * 2 + 3
+            p = sine_stack(midi(note + 12), dur, [(1, 1.0), (2, 0.12)], rng) * env_adsr(int(dur * SR), 3.0, 1.0, 0.7, 3.5)
+            place(dry, p, b * bar, pan=(i - 1.5) * 0.5, gain=0.03)
+            place(send, p, b * bar, pan=(i - 1.5) * 0.5, gain=0.07)
+        for k in range(6):
+            if rng.random() < 0.45:
+                s = pluck(midi(ch[rng.integers(0, 4)] + 24), 2.5, rng)
+                place(dry, s, b * bar + k * 1.3 + rng.uniform(0, 0.3), rng.uniform(-0.7, 0.7), 0.025)
+                place(send, s, b * bar + k * 1.3, 0, 0.07)
+    city = lowpass(rng.normal(0, 1, n), 160, 2)
+    dry[:, 0] += city * 0.05
+    dry[:, 1] += np.roll(city, 5000) * 0.05
+    ir = make_ir(6.0, 0.65, rng, 5000)
+    return finish(dry, send, ir, L, rng, wet=0.75, lp=8000)
+
+
+def backrooms_hum(rng):
+    """fluorescent hum and a slow, slightly sour pad; very quiet and dry"""
+    L = 96.0
+    n = int((L + 6) * SR)
+    t = np.arange(n) / SR
+    dry = np.zeros((n, 2))
+    send = np.zeros((n, 2))
+    hum = sum(a * np.sin(2 * np.pi * f * t) for f, a in [(60, 1.0), (120, 0.6), (180, 0.25), (240, 0.15), (300, 0.06)])
+    hum *= 0.6 + 0.4 * np.sin(2 * np.pi * t / 7.3) ** 2
+    dry[:, 0] += hum * 0.035
+    dry[:, 1] += hum * 0.032
+    for k in range(6):
+        t0 = k * 16
+        dur = 20
+        for i, note in enumerate([50, 53, 56 + (k % 2)]):
+            p = lowpass(saw_pad(midi(note), dur, rng, detune=0.25, harmonics=5, voices=2), 700, 1) * env_adsr(int(dur * SR), 6, 2, 0.7, 7)
+            place(dry, p, t0, pan=(i - 1) * 0.5, gain=0.035)
+            place(send, p, t0, pan=(i - 1) * 0.5, gain=0.05)
+    buzz = highpass(rng.normal(0, 1, n), 3000, 2) * 0.004 * (rng.random(n) > 0.9995).cumsum() % 2
+    dry[:, 0] += buzz
+    ir = make_ir(2.5, 1.6, rng, 2500)
+    return finish(dry, send, ir, L, rng, wet=0.5, lp=5000, sat=1.0)
+
+
+def retro_hills(rng):
+    """lo-fi console-era melody: square lead, triangle bass, chunky pads, bitcrushed"""
+    bpm = 84
+    beat = 60 / bpm
+    bar = beat * 4
+    prog = [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62]]
+    lead = [76, 74, 72, 74, 76, 79, 76, 74, 72, 69, 72, 74, 72, 69, 67, 69]
+    bars = 32
+    L = bars * bar
+    n = int((L + 4) * SR)
+    dry = np.zeros((n, 2))
+    send = np.zeros((n, 2))
+    for b in range(bars):
+        ch = prog[b % 4]
+        t0 = b * bar
+        for i, note in enumerate(ch):
+            p = lowpass(square(midi(note), bar + 0.5, 0.5, 8), 2500, 1) * env_adsr(int((bar + 0.5) * SR), 0.3, 0.5, 0.6, 0.6)
+            place(dry, p, t0, pan=(i - 1) * 0.4, gain=0.03)
+            place(send, p, t0, pan=(i - 1) * 0.4, gain=0.04)
+        tri = sine_stack(midi(ch[0] - 12), beat * 2, [(1, 1.0), (3, 0.11), (5, 0.04)], rng)
+        for k in (0, 2):
+            place(dry, tri * env_adsr(len(tri), 0.01, 0.3, 0.7, 0.3), t0 + k * beat, gain=0.1)
+        if b >= 4 and b % 16 < 14:
+            for k in range(4):
+                note = lead[(b * 4 + k) % len(lead)]
+                if rng.random() < 0.85:
+                    s = square(midi(note), beat * 0.9, 0.25, 10) * env_adsr(int(beat * 0.9 * SR), 0.01, 0.2, 0.6, 0.25)
+                    vib = 1.0
+                    place(dry, s * vib, t0 + k * beat, pan=0.1, gain=0.045)
+                    place(send, s, t0 + k * beat, pan=0.1, gain=0.05)
+    ir = make_ir(2.8, 1.4, rng, 4000)
+    out = finish(dry, send, ir, L, rng, wet=0.45, lp=7000, sat=1.2)
+    out = bitcrush(out, 9, 16000)
+    return lowpass(out, 6500, 1)
+
+
 if __name__ == '__main__':
     out = sys.argv[1] if len(sys.argv) > 1 else 'web/audio'
     os.makedirs(out, exist_ok=True)
     write(os.path.join(out, 'pastel_lullaby.mp3'), pastel_lullaby(np.random.default_rng(7)))
     write(os.path.join(out, 'aqua_halls.mp3'), aqua_halls(np.random.default_rng(11)))
     write(os.path.join(out, 'cloud_choir.mp3'), cloud_choir(np.random.default_rng(23)))
+    write(os.path.join(out, 'fog_bridge.mp3'), fog_bridge(np.random.default_rng(31)))
+    write(os.path.join(out, 'empty_mall.mp3'), empty_mall(np.random.default_rng(37)))
+    write(os.path.join(out, 'courtyard_night.mp3'), courtyard_night(np.random.default_rng(41)))
+    write(os.path.join(out, 'backrooms_hum.mp3'), backrooms_hum(np.random.default_rng(43)))
+    write(os.path.join(out, 'retro_hills.mp3'), retro_hills(np.random.default_rng(47)))
