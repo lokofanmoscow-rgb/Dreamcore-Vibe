@@ -138,12 +138,13 @@ export class LevelBase {
       if (!o.isMesh || o.isInstancedMesh || Array.isArray(o.material) || !o.geometry) return;
       const m = o.material;
       if (!ok.has(m.type) || Object.prototype.hasOwnProperty.call(m, 'onBeforeCompile')) return;
-      if (m.transparent || m.blending !== THREE.NormalBlending || o.renderOrder !== 0 || !o.visible) return;
+      if (m.blending !== THREE.NormalBlending || o.renderOrder !== 0 || !o.visible) return;
+      if (m.transparent && (m.depthWrite || m.opacity > 0.6)) return;
       if (o.geometry.morphAttributes && Object.keys(o.geometry.morphAttributes).length) return;
       if (isDynamic(o)) return;
       const key = [m.type, m.color && m.color.getHexString(), m.roughness, m.metalness, m.emissive && m.emissive.getHexString(), m.emissiveIntensity,
         texKey(m.map), texKey(m.normalMap), texKey(m.emissiveMap), m.side, m.alphaTest, m.toneMapped, m.fog, o.castShadow, o.receiveShadow,
-        m.normalScale ? m.normalScale.x : 0].join('|');
+        m.normalScale ? m.normalScale.x : 0, m.transparent, m.opacity, m.depthWrite].join('|');
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(o);
     });

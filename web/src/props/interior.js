@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32 } from '../core/noise.js';
 import { woodFloorTexture, paintedWallTexture, sidingTexture, nrm, rep } from '../core/textures.js';
 
@@ -39,11 +40,12 @@ function holedWall(axis, at, a0, a1, y0, y1, holes, outward) {
   return { slab, lining };
 }
 
+// small palettes so the level batcher can merge furniture across houses
 const FURN = {
-  sofa: ['#8a9a7a', '#a07a6a', '#7a8aa8', '#b8a07a', '#9a7aa0'],
-  wood: ['#7a5a3e', '#8f6c4a', '#5e4632', '#a8865e'],
-  rug: ['#b85a4a', '#5a7ab0', '#c8a860', '#7a9a6a', '#a86a9a'],
-  paint: ['#efe6d2', '#e8dccb', '#dfe6dc', '#ead8d8', '#dfe2ea', '#f0e8c8'],
+  sofa: ['#8a9a7a', '#a07a6a', '#7a8aa8'],
+  wood: ['#7a5a3e', '#a8865e'],
+  rug: ['#b85a4a', '#5a7ab0', '#c8a860'],
+  paint: ['#efe6d2', '#dfe6dc', '#ead8d8'],
 };
 
 export function buildInterior({ w, d, h, wall, glassGlow, doorX, garage, seed, trimMat }) {
@@ -166,7 +168,7 @@ export function buildInterior({ w, d, h, wall, glassGlow, doorX, garage, seed, t
   // a picture frame on the side wall
   const pfx = farSide === fr.x0 ? fr.x0 + 0.02 : fr.x1 - 0.02;
   add('frame', std('#4a3a2a', 0.5), box(0.04, 0.6, 0.85, pfx, 1.7, (fr.z0 + fr.z1) / 2));
-  add('art', new THREE.MeshStandardMaterial({ color: pick(['#9fc8e8', '#e8b8c8', '#c8e0a8', '#f0d890']), roughness: 0.9 }),
+  add('art', new THREE.MeshStandardMaterial({ color: pick(['#9fc8e8', '#e8b8c8']), roughness: 0.9 }),
     box(0.045, 0.5, 0.75, pfx, 1.7, (fr.z0 + fr.z1) / 2));
 
   // ---------------------------------------------------------------- back room: kitchen or bedroom
@@ -185,7 +187,7 @@ export function buildInterior({ w, d, h, wall, glassGlow, doorX, garage, seed, t
     for (const [ox, oz] of [[-0.55, -0.3], [0.55, -0.3], [-0.55, 0.3], [0.55, 0.3]]) add('wood', woodMat, box(0.05, 0.74, 0.05, tx + ox, FY + 0.37, tz2 + oz));
     for (const ox of [-0.4, 0.4]) {
       for (const sg of [-1, 1]) {
-        add('chair', std(pick(FURN.sofa), 0.8), box(0.42, 0.05, 0.42, tx + ox, FY + 0.46, tz2 + sg * 0.62), box(0.42, 0.45, 0.04, tx + ox, FY + 0.7, tz2 + sg * 0.82));
+        add('chair', std(FURN.sofa[0], 0.8), box(0.42, 0.05, 0.42, tx + ox, FY + 0.46, tz2 + sg * 0.62), box(0.42, 0.45, 0.04, tx + ox, FY + 0.7, tz2 + sg * 0.82));
       }
     }
     col(tx, tz2, 1.4, 1.7);
@@ -206,19 +208,23 @@ export function buildInterior({ w, d, h, wall, glassGlow, doorX, garage, seed, t
   }
   // ceiling lights
   const ceilLamp = new THREE.MeshBasicMaterial({ color: new THREE.Color('#fff3dc').multiplyScalar(rnd() < 0.6 ? 2.0 : 0.6) });
+  void ceilLamp;
   add('ceilLamp', ceilLamp, new THREE.CylinderGeometry(0.25, 0.25, 0.05, 16).translate((fr.x0 + fr.x1) / 2, h - 0.05, (fr.z0 + fr.z1) / 2));
   add('ceilLamp', ceilLamp, new THREE.CylinderGeometry(0.22, 0.22, 0.05, 16).translate((br.x0 + br.x1) / 2, h - 0.05, (br.z0 + br.z1) / 2));
 
   // ---------------------------------------------------------------- meshes
   const group = new THREE.Group();
   for (const [k, list] of Object.entries(parts)) {
-    for (const g of list) {
-      const m = new THREE.Mesh(g, mats[k]);
-      m.castShadow = k !== 'glass' && k !== 'rug';
-      m.receiveShadow = true;
-      if (k === 'glass') m.renderOrder = 3;
-      group.add(m);
-    }
+    const geo = mergeGeometries(list.map((g) => {
+      const n = g.index ? g.toNonIndexed() : g;
+      for (const a of Object.keys(n.attributes)) if (!['position', 'normal', 'uv'].includes(a)) n.deleteAttribute(a);
+      if (!n.attributes.uv) n.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(n.attributes.position.count * 2), 2));
+      return n;
+    }));
+    const m = new THREE.Mesh(geo, mats[k]);
+    m.castShadow = k === 'ext' || k === 'paint' || k === 'ceil';
+    m.receiveShadow = true;
+    group.add(m);
   }
   return {
     group,
