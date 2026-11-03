@@ -90,7 +90,7 @@ class Game {
 
   // ------------------------------------------------------------------ levels
   ctx() {
-    return { q: quality(), qualityName: settings.quality, renderer: this.renderer, camera: this.camera };
+    return { q: quality(), qualityName: settings.quality, renderer: this.renderer, camera: this.camera, audio: this.audio };
   }
 
   loadLevel(index) {
@@ -105,6 +105,10 @@ class Game {
     if (level.waterLevel) level.waterFx = new WaterFX(level.scene);
     this.level = level;
     this.renderer.applyGrade(level.grade);
+    if ((this.renderer.levelScale || 1) !== (level.renderScale || 1)) {
+      this.renderer.levelScale = level.renderScale || 1;
+      this.renderer.resize();
+    }
     this.camera.far = level.far || 1000;
     this.camera.fov = settings.fov;
     this.camera.updateProjectionMatrix();
@@ -490,7 +494,7 @@ class Game {
 }
 
 function roman(n) {
-  return ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'][n - 1] || String(n);
+  return ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV'][n - 1] || String(n);
 }
 
 function nextFrame() { return new Promise((r) => requestAnimationFrame(() => r())); }

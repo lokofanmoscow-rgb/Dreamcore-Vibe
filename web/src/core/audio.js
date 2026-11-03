@@ -8,6 +8,11 @@ export const TRACKS = {
   pastel: 'audio/pastel_lullaby.mp3',
   aqua: 'audio/aqua_halls.mp3',
   heaven: 'audio/cloud_choir.mp3',
+  fogbridge: 'audio/fog_bridge.mp3',
+  mall: 'audio/empty_mall.mp3',
+  courtyard: 'audio/courtyard_night.mp3',
+  backrooms: 'audio/backrooms_hum.mp3',
+  retro: 'audio/retro_hills.mp3',
 };
 
 export class AudioSystem {
@@ -446,6 +451,26 @@ export class AudioSystem {
       case 'clouds':
         noise('bandpass', 900, 0.4, 0.12, 0.03);
         noise('lowpass', 200, 0.5, 0.25, 0.02);
+        break;
+      case 'bridge':
+        noise('lowpass', 380, 0.5, 0.32, 0.04);
+        noise('bandpass', 140, 0.7, 0.2, 0.06);
+        break;
+      case 'mall':
+        noise('lowpass', 220, 0.7, 0.22, 0.02);
+        hum(120, 0.006); hum(240, 0.003);
+        noise('highpass', 6500, 0.4, 0.004, 0.3);
+        level = 0.7;
+        break;
+      case 'courtyard':
+        noise('lowpass', 160, 0.6, 0.3, 0.02);
+        noise('bandpass', 900, 0.4, 0.015, 0.05);
+        break;
+      case 'backrooms':
+        hum(60, 0.012); hum(120, 0.01); hum(180, 0.004);
+        noise('bandpass', 4200, 2.0, 0.006, 0.4);
+        noise('lowpass', 120, 0.6, 0.15, 0.02);
+        level = 0.8;
         break;
       case 'playground':
         noise('lowpass', 500, 0.5, 0.2, 0.05);

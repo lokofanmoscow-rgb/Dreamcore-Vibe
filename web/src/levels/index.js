@@ -5,6 +5,11 @@ import * as suburb from './suburb.js';
 import * as pool from './pool.js';
 import * as clouds from './clouds.js';
 import * as playground from './playground.js';
+import * as bridge from './bridge.js';
+import * as store from './store.js';
+import * as courtyard from './courtyard.js';
+import * as backrooms from './backrooms.js';
+import * as hills from './hills.js';
 
 // Level list. `card` is the gradient used in the level select screen.
 export const LEVELS = [
@@ -42,5 +47,30 @@ export const LEVELS = [
     id: 'playground', title: 'Площадка', music: 'pastel', ambience: 'playground', build: playground.build,
     card: 'linear-gradient(160deg, #3aa0f4 0%, #ff9cc4 50%, #ffd84a 100%)',
     grade: { saturation: 1.25, contrast: 1.05, tint: [1.02, 1.0, 0.98], vignette: 0.3, bloomStrength: 0.45, bloomThreshold: 0.85 },
+  },
+  {
+    id: 'bridge', title: 'Мост в никуда', music: 'fogbridge', ambience: 'bridge', build: bridge.build,
+    card: 'linear-gradient(160deg, #8fa2ae 0%, #b7c6cd 50%, #4a565e 100%)',
+    grade: { saturation: 0.9, contrast: 1.05, tint: [0.97, 1.0, 1.03], vignette: 0.32, bloomStrength: 0.35, bloomThreshold: 0.9, distortion: 0.1 },
+  },
+  {
+    id: 'store', title: 'Пустой магазин', music: 'mall', ambience: 'mall', build: store.build,
+    card: 'repeating-conic-gradient(#b8263a 0 25%, #e6ceb0 0 50%) 0 0 / 40px 40px',
+    grade: { saturation: 1.0, contrast: 1.06, tint: [0.98, 1.02, 0.98], vignette: 0.45, bloomStrength: 0.45, bloomThreshold: 0.85, grain: 0.05 },
+  },
+  {
+    id: 'courtyard', title: 'Двор-колодец', music: 'courtyard', ambience: 'courtyard', build: courtyard.build,
+    card: 'linear-gradient(160deg, #5d5a78 0%, #c4bccb 60%, #6a7a5a 100%)',
+    grade: { saturation: 0.95, contrast: 1.05, tint: [1.0, 0.98, 1.03], vignette: 0.38, bloomStrength: 0.55, bloomThreshold: 0.82 },
+  },
+  {
+    id: 'backrooms', title: 'Подвал', music: 'backrooms', ambience: 'backrooms', build: backrooms.build,
+    card: 'linear-gradient(160deg, #e8d89a 0%, #b8a870 50%, #3a3422 100%)',
+    grade: { saturation: 1.0, contrast: 1.08, tint: [1.04, 1.0, 0.9], vignette: 0.5, bloomStrength: 0.5, bloomThreshold: 0.82, grain: 0.06 },
+  },
+  {
+    id: 'hills', title: 'Старые холмы', music: 'retro', ambience: 'meadow', build: hills.build,
+    card: 'linear-gradient(160deg, #2f6ec0 0%, #c6dcef 45%, #a8ac62 100%)',
+    grade: { saturation: 0.92, contrast: 0.96, tint: [1.02, 1.0, 0.96], vignette: 0.22, bloomStrength: 0.25, bloomThreshold: 0.92, distortion: 0.0, chroma: 0.0, grain: 0.02 },
   },
 ];

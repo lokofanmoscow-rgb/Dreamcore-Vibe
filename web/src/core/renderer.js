@@ -183,7 +183,7 @@ export class Renderer {
     const h = Math.max(1, window.innerHeight);
     this.width = w;
     this.height = h;
-    const pr = Math.min(window.devicePixelRatio || 1, this.quality ? this.quality.pixelRatio : 1);
+    const pr = Math.min(window.devicePixelRatio || 1, this.quality ? this.quality.pixelRatio : 1) * (this.levelScale || 1);
     this.pixelRatio = pr;
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(w, h, false);
