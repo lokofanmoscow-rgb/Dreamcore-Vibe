@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32 } from '../core/noise.js';
 import { sidingTexture, roofTexture, leafyTexture, textTexture, concreteTexture, nrm, rep } from '../core/textures.js';
+import { buildInterior } from './interior.js';
 
 // ------------------------------------------------------------------ helpers
 export function std(color, rough = 0.7, metal = 0, extra = {}) {
@@ -184,13 +185,14 @@ export function windTurbine({ height = 38, color = '#f4f6f8', bladeLen = 17 } = 
 // ------------------------------------------------------------------ house
 export function house({
   w = 10, d = 8, h = 3.0, wall = '#e8d4b0', roof = '#8a3a2c', trim = '#ffffff', door = '#7a3b2a',
-  roofH = 2.2, garage = false, windowGlow = null, chimney = false, seed = 1,
+  roofH = 2.2, garage = false, windowGlow = null, chimney = false, seed = 1, interior = false,
 } = {}) {
   const group = new THREE.Group();
-  const wallTex = rep(sidingTexture(wall), w / 3, h / 3);
-  const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, normalMap: nrm(wallTex), roughness: 0.85 });
-  const body = mesh([bx(w, h, d, 0, h / 2, 0)], wallMat);
-  group.add(body);
+  if (!interior) {
+    const wallTex = rep(sidingTexture(wall), w / 3, h / 3);
+    const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, normalMap: nrm(wallTex), roughness: 0.85 });
+    group.add(mesh([bx(w, h, d, 0, h / 2, 0)], wallMat));
+  }
   // foundation
   group.add(mesh([bx(w + 0.2, 0.35, d + 0.2, 0, 0.12, 0)], std('#9c968a', 0.9)));
   // hipped roof
@@ -254,9 +256,18 @@ export function house({
     winGeos.push(bx(0.05, 1.1, 1.2, sx * (w / 2 + 0.01), 1.65, 0));
     trimGeos.push(bx(0.08, 0.1, 1.4, sx * (w / 2 + 0.03), 2.25, 0), bx(0.08, 0.1, 1.4, sx * (w / 2 + 0.03), 1.05, 0));
   }
-  group.add(mesh(winGeos, glassMat, { cast: false }));
+  if (interior) {
+    const ib = buildInterior({ w, d, h, wall, glassGlow: windowGlow, doorX, garage, seed });
+    group.add(ib.group);
+    group.userData.localColliders = ib.colliders;
+    group.userData.interior = ib.interior;
+    group.userData.doorX = doorX;
+    group.userData.depth = d;
+  } else {
+    group.add(mesh(winGeos, glassMat, { cast: false }));
+    group.add(mesh([bx(1.0, 2.1, 0.08, doorX, 1.05 + 0.25, d / 2 + 0.02)], std(door, 0.5)));
+  }
   group.add(mesh(trimGeos, trimMat));
-  group.add(mesh([bx(1.0, 2.1, 0.08, doorX, 1.05 + 0.25, d / 2 + 0.02)], std(door, 0.5)));
   trimGeos.length = 0;
   group.add(mesh([bx(1.25, 0.12, 0.1, doorX, 2.42, d / 2 + 0.04), bx(1.6, 0.2, 0.8, doorX, 0.15, d / 2 + 0.4)], trimMat));
   if (garage) {
@@ -277,8 +288,24 @@ export function house({
 }
 
 export function houseColliders(obj) {
+  const r = obj.rotation.y, c = Math.cos(r), s = Math.sin(r);
+  const px = obj.position.x, pz = obj.position.z;
+  if (obj.userData.localColliders) {
+    return obj.userData.localColliders.map((k) => boxCollider(px + k.x * c + k.z * s, pz - k.x * s + k.z * c, k.w, k.d, r));
+  }
   const fp = obj.userData.footprint;
-  return [boxCollider(obj.position.x, obj.position.z, fp.w, fp.d, obj.rotation.y)];
+  return [boxCollider(px, pz, fp.w, fp.d, r)];
+}
+
+// floor height if (x, z) is inside an enterable house, otherwise null
+export function houseFloorAt(obj, x, z) {
+  const it = obj.userData.interior;
+  if (!it) return null;
+  const r = obj.rotation.y, c = Math.cos(r), s = Math.sin(r);
+  const dx = x - obj.position.x, dz = z - obj.position.z;
+  const lx = dx * c - dz * s, lz = dx * s + dz * c;
+  if (lx < it.x0 || lx > it.x1 || lz < it.z0 || lz > it.z1 + 0.25) return null;
+  return obj.position.y + it.floorY;
 }
 
 // ------------------------------------------------------------------ vegetation

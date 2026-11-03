@@ -4,7 +4,7 @@ import { Terrain, grassLayers } from '../core/terrain.js';
 import { makeNoise2D, fbm2, smoothstep, mulberry32 } from '../core/noise.js';
 import { asphaltTexture, canvasTexture, concreteTexture, nrm, rep } from '../core/textures.js';
 import {
-  house, houseColliders, picketFence, hedge, cypress, trashBin, mailbox, hydrant, lawnDeer, stationWagon,
+  house, houseColliders, houseFloorAt, picketFence, hedge, cypress, trashBin, mailbox, hydrant, lawnDeer, stationWagon,
   streetLamp, barricade, windTurbine, boxCollider, circleCollider, roundTree,
 } from '../props/props.js';
 
@@ -82,13 +82,24 @@ export function build(ctx, def) {
     groundRepeat: 0.25,
   });
   L.add(terrain.mesh);
+  const homeFloor = (x, z) => {
+    for (const o of homesRef) {
+      if (Math.abs(x - o.position.x) > 9 || Math.abs(z - o.position.z) > 9) continue;
+      const f = houseFloorAt(o, x, z);
+      if (f !== null) return f;
+    }
+    return null;
+  };
+  const homesRef = [];
   L.groundHeight = (x, z) => {
+    const hf = homeFloor(x, z);
+    if (hf !== null) return hf;
     const d = dRoad(x, z);
     if (d < ROAD_HALF) return 0;
     if (d < WALK_OUT) return 0.15;
     return height(x, z);
   };
-  L.surface = (x, z) => (dRoad(x, z) < WALK_OUT ? 'concrete' : 'grass');
+  L.surface = (x, z) => (homeFloor(x, z) !== null ? 'wood' : dRoad(x, z) < WALK_OUT ? 'concrete' : 'grass');
 
   const grass = grassLayers(terrain, q, { height: 0.32, width: 0.07, base: '#3a5a1c', tip: '#b8c85a', wind: 0.6, nearCount: 45000, farCount: 30000 });
   grass.meshes.forEach((m) => L.add(m));
@@ -148,16 +159,19 @@ export function build(ctx, def) {
       lots.push({ x, z, facing, nx, nz, p, s, tan: { x: dx / l, z: dz / l } });
     }
   }
+  const homes = [];
   lots.forEach((lot, k) => {
     const w = 9 + rnd() * 4, d = 7 + rnd() * 2;
     const h = house({
       w, d, h: 2.9 + rnd() * 0.4, wall: walls[k % walls.length], roof: roofs[k % roofs.length],
       roofH: 1.8 + rnd() * 0.8, garage: rnd() < 0.6, windowGlow: rnd() < 0.55 ? '#ffb45a' : null, seed: k + 3, chimney: rnd() < 0.3,
+      interior: true,
     });
     h.object.position.set(lot.x, height(lot.x, lot.z) - 0.05, lot.z);
     h.object.rotation.y = lot.facing;
     L.add(h.object);
     L.collide(houseColliders(h.object));
+    homes.push(h.object);
     // driveway
     const dw = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.1, 9), new THREE.MeshStandardMaterial({ map: rep(concreteTexture('#c9c2b6'), 1, 3), roughness: 0.9 }));
     const gx = lot.x - lot.nx * (d / 2 + 4.3) + Math.cos(lot.facing) * w * 0.25;
@@ -233,6 +247,8 @@ export function build(ctx, def) {
       L.collide(circleCollider(hx2, hz2, 0.2));
     }
   });
+
+  homesRef.push(...homes);
 
   // street lamps
   for (let i = 6; i < road.length - 12; i += 14) {
