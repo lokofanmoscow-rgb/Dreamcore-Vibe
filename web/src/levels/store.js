@@ -299,7 +299,7 @@ export function build(ctx, def) {
 
   L.groundHeight = () => 0;
   L.surface = () => 'tile';
-  L.bounds = { type: 'box', x0: -39.6, x1: 47.6, z0: -95.6, z1: -0.4 };
+  L.bounds = { type: 'box', x0: -39.9, x1: 47.9, z0: -96.1, z1: -0.1 };
   L.spawn = { x: 2, z: -3, yaw: 0.25, pitch: -0.05 };
   L.menuCam = { x: -24, z: -3.5, yaw: -0.35, y: 1.6, pitch: -0.12 };
   L.envFromScene(new THREE.Vector3(0, 2, -30), 0.6);

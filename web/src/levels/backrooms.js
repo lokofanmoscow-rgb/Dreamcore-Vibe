@@ -175,8 +175,8 @@ export function build(ctx, def) {
   });
 
   // ---------------------------------------------------------------- light & air
-  L.setupHemi('#f2e4b0', '#4a4024', 1.15);
-  L.setupFogExp('#3a3422', 0.03);
+  L.setupHemi('#f2e4b0', '#4a4024', 1.3);
+  L.setupFogExp('#3a3422', 0.025);
   L.envFromScene(new THREE.Vector3(0, 1.5, -3.5), 0.4);
 
   // ---------------------------------------------------------------- doors (all against the outer walls)

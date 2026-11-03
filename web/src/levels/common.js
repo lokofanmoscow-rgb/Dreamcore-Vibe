@@ -29,7 +29,7 @@ export class LevelBase {
   groundHeight() { return 0; }
   surface() { return this.surfaceDefault; }
 
-  add(obj) { this.scene.add(obj); return obj; }
+  add(...objs) { this.scene.add(...objs); return objs[0]; }
   collide(...cs) { for (const c of cs.flat()) this.colliders.push(c); }
   onUpdate(fn) { this.updaters.push(fn); }
 
