@@ -32,19 +32,15 @@ class Game {
     this.player.onStep = (pos, speed, inWater) => {
       if (!this.level) return;
       if (inWater) {
-        this.audio.footstep('water', speed);
         const wl = this.level.waterLevel(pos.x, pos.z);
         if (this.level.waterFx) this.level.waterFx.ripple(pos.x, wl, pos.z, 0.7 + speed * 0.08);
       } else {
-        this.audio.footstep(this.level.surface(pos.x, pos.z), speed);
       }
     };
     this.player.onLand = (pos, impact, inWater) => {
       if (!this.level) return;
       if (inWater) {
         this.audio.splash(impact / 5);
-      } else if (impact > 2) {
-        this.audio.land(this.level.surface(pos.x, pos.z), impact);
       }
     };
     this.player.onWaterEnter = (pos, speed, wl) => {
@@ -115,10 +111,9 @@ class Game {
     this.player.spawn(level);
     if (level.door) {
       level.door.onOpen = () => {
-        this.audio.doorCreak();
       };
     }
-    for (const d of level.decoys) d.onLocked = () => this.audio.locked();
+    for (const d of level.decoys) d.onLocked = null;
     // warm up shaders so the first frames don't hitch
     try { this.renderer.renderer.compile(level.scene, this.camera); } catch (e) { /* ignore */ }
     return level;
@@ -428,7 +423,7 @@ class Game {
       const d = lv.door;
       if (d) {
         if (d.update(dt, this.player.pos)) this.onDoorEnter();
-        this.audio.setHum(1 - Math.min(1, d.distance / 22));
+        this.audio.setHum(0);
       }
       for (const x of lv.decoys) x.update(dt, this.player.pos);
       this.audio.setWade(this.player.inWater ? this.player.speed / 4 : 0);

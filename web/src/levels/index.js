@@ -9,7 +9,6 @@ import * as bridge from './bridge.js';
 import * as store from './store.js';
 import * as courtyard from './courtyard.js';
 import * as backrooms from './backrooms.js';
-import * as hills from './hills.js';
 
 // Level list. `card` is the gradient used in the level select screen.
 export const LEVELS = [
@@ -64,13 +63,9 @@ export const LEVELS = [
     grade: { saturation: 0.95, contrast: 1.05, tint: [1.0, 0.98, 1.03], vignette: 0.38, bloomStrength: 0.55, bloomThreshold: 0.82 },
   },
   {
-    id: 'backrooms', title: 'Подвал', music: 'backrooms', ambience: 'backrooms', build: backrooms.build,
+    id: 'backrooms', title: 'Подвал', music: null, ambience: null, build: backrooms.build,
     card: 'linear-gradient(160deg, #e8d89a 0%, #b8a870 50%, #3a3422 100%)',
     grade: { saturation: 1.0, contrast: 1.08, tint: [1.04, 1.0, 0.9], vignette: 0.5, bloomStrength: 0.5, bloomThreshold: 0.82, grain: 0.06 },
   },
-  {
-    id: 'hills', title: 'Старые холмы', music: 'retro', ambience: 'meadow', build: hills.build,
-    card: 'linear-gradient(160deg, #2f6ec0 0%, #c6dcef 45%, #a8ac62 100%)',
-    grade: { saturation: 0.92, contrast: 0.96, tint: [1.02, 1.0, 0.96], vignette: 0.22, bloomStrength: 0.25, bloomThreshold: 0.92, distortion: 0.0, chroma: 0.0, grain: 0.02 },
-  },
+
 ];

@@ -156,6 +156,8 @@ export class AudioSystem {
   // energy mostly 150-700 Hz with a faint click and some room echo.
   // Grass, dirt and clouds are silent on purpose.
   footstep(surface = 'grass', speed = 3) {
+    // walking is silent everywhere by design
+    if (surface !== '__never__') return;
     if (!this.ctx || this.paused) return;
     const cfg = {
       tile: { f: 330, f2: 540, vol: 0.13, verb: 0.55, click: 0.5, body: 0.35 },
@@ -233,6 +235,8 @@ export class AudioSystem {
 
   // door starts to open: just a soft latch and a quiet, distant chime
   doorCreak() {
+    return; // opening doors is silent
+    // eslint-disable-next-line no-unreachable
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;
     // only a very soft, slow chime far in the background
@@ -305,6 +309,8 @@ export class AudioSystem {
   }
 
   locked() {
+    return; // locked doors only shake, silently
+    // eslint-disable-next-line no-unreachable
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;
     for (let i = 0; i < 3; i++) {
