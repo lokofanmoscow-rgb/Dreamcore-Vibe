@@ -296,9 +296,11 @@ export class Door {
     this.time += dt;
     this.uniforms.uTime.value = this.time;
     const l = this._local.copy(playerPos).applyMatrix4(this.inv);
-    const dist = Math.hypot(l.x, l.z);
+    // a door on another storey is out of reach
+    const sameLevel = l.y > -1.2 && l.y < 1.6;
+    const dist = sameLevel ? Math.hypot(l.x, l.z) : 1e4;
     this.distance = dist;
-    if (!this.target && l.z > 0.2 && dist < (this.locked ? 1.8 : 3.4)) {
+    if (!this.target && sameLevel && l.z > 0.2 && dist < (this.locked ? 1.8 : 3.4)) {
       if (this.locked) {
         if (!this._rattled) { this._rattled = true; this.shake = 0.5; if (this.onLocked) this.onLocked(); }
       } else this.target = 1;
@@ -339,7 +341,7 @@ export class Door {
 
     // entering = stepping into the open doorway from the front
     let entered = false;
-    if (this.open > 0.35 && l.z < 0.45 && l.z > -0.6 && Math.abs(l.x) < this.width / 2 + 0.05
+    if (sameLevel && this.open > 0.35 && l.z < 0.45 && l.z > -0.6 && Math.abs(l.x) < this.width / 2 + 0.05
       && this._prevLocalZ !== null && this._prevLocalZ > -0.6) {
       entered = true;
     }
