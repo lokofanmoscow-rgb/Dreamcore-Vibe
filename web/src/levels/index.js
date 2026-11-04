@@ -64,8 +64,8 @@ export const LEVELS = [
   },
   {
     id: 'backrooms', title: 'Подвал', music: null, ambience: null, build: backrooms.build,
-    card: 'linear-gradient(160deg, #e8d89a 0%, #b8a870 50%, #3a3422 100%)',
-    grade: { saturation: 1.0, contrast: 1.08, tint: [1.04, 1.0, 0.9], vignette: 0.5, bloomStrength: 0.5, bloomThreshold: 0.82, grain: 0.06 },
+    card: 'linear-gradient(160deg, #f2e6a8 0%, #cdb862 55%, #a99a5e 100%)',
+    grade: { saturation: 1.06, contrast: 1.02, tint: [1.05, 1.0, 0.84], vignette: 0.36, bloomStrength: 0.45, bloomThreshold: 0.86, grain: 0.05 },
   },
 
 ];
