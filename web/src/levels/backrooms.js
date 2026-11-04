@@ -31,10 +31,10 @@ function wallpaperTexture() {
     for (let col = 0; col < 4; col++) c.fillRect(col * (w / 4), 0, 3, h);
     for (let i = 0; i < 9000; i++) { c.fillStyle = `rgba(${rnd() < 0.5 ? '120,100,40' : '240,228,170'},${rnd() * 0.06})`; c.fillRect(rnd() * w, rnd() * h, 2, 2); }
     // water stains from the ceiling and grime near the floor
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 1; i++) {
       const x = rnd() * w, len = 60 + rnd() * 150;
       const g = c.createLinearGradient(0, 0, 0, len);
-      g.addColorStop(0, 'rgba(120,96,40,0.25)'); g.addColorStop(1, 'rgba(120,96,40,0)');
+      g.addColorStop(0, 'rgba(120,96,40,0.1)'); g.addColorStop(1, 'rgba(120,96,40,0)');
       c.fillStyle = g; c.fillRect(x, 0, 20 + rnd() * 40, len);
     }
     const g2 = c.createLinearGradient(0, h * 0.8, 0, h);
@@ -49,7 +49,7 @@ function wallpaperTexture() {
 function carpetTexture() {
   const rnd = mulberry32(23);
   return canvasTexture(512, 512, (c, w, h) => {
-    c.fillStyle = '#a99a5e'; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#958146'; c.fillRect(0, 0, w, h);
     for (let i = 0; i < 40000; i++) { c.fillStyle = `rgba(${rnd() < 0.5 ? '90,78,40' : '205,190,130'},${rnd() * 0.12})`; c.fillRect(rnd() * w, rnd() * h, 1, 1 + rnd() * 2); }
     for (let i = 0; i < 4; i++) {
       const x = rnd() * w, y = rnd() * h, r = 50 + rnd() * 140;

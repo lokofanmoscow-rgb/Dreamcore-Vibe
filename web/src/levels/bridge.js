@@ -5,18 +5,20 @@ import { asphaltTexture, canvasTexture, concreteTexture, waterNormalTexture, nrm
 import { mulberry32 } from '../core/noise.js';
 import { stationWagon, boxCollider } from '../props/props.js';
 
-// An endless sea bridge in thick haze: two carriageways, a median screen,
-// curved white lamp posts, overhead LED signs and a building lost in the fog.
+// An endless sea bridge on a clear sunny day: two carriageways, a median
+// screen, rows of curved white lamp posts, overhead LED signs, and the domed
+// island building far ahead. The road dips and climbs again, so the whole
+// bridge is visible at once, like in the photo.
 
 const Z0 = 24, Z1 = -900;      // deck extent
 const HALF = 14;               // half deck width
 const END = -820;              // the gate building
 
 function deckY(z) {
-  const t = Math.min(1, Math.max(0, (-z - 120) / 420));
-  const hump = (1 - Math.cos(t * Math.PI * 2)) * 0.5 * 7.5;
-  const t2 = Math.min(1, Math.max(0, (-z - 600) / 180));
-  return hump + t2 * t2 * (3 - 2 * t2) * 2.5;
+  const s = Math.max(0, -z);
+  const dip = s < 560 ? -2.4 * Math.sin((Math.PI * s) / 560) : 0;
+  const t = Math.min(1, Math.max(0, (s - 540) / 270));
+  return dip + t * t * (3 - 2 * t) * 6.5;
 }
 
 function roadTexture() {
@@ -39,9 +41,12 @@ function ledTexture(text) {
     c.shadowColor = '#ff3020'; c.shadowBlur = 18;
     c.fillStyle = '#ff4a30';
     c.fillText(text, w / 2, h / 2 + 4);
-    c.globalCompositeOperation = 'destination-in';
-    c.fillStyle = '#000';
-    for (let y = 0; y < h; y += 4) for (let x = 0; x < w; x += 4) c.fillRect(x, y, 3, 3);
+    c.shadowBlur = 0;
+    c.fillText(text, w / 2, h / 2 + 4);
+    // LED dot grid: thin dark gaps so the letters stay readable from afar
+    c.fillStyle = 'rgba(12,12,14,0.55)';
+    for (let y = 3; y < h; y += 4) c.fillRect(0, y, w, 1);
+    for (let x = 3; x < w; x += 4) c.fillRect(x, 0, 1, h);
   }, { wrap: false });
 }
 
@@ -62,9 +67,9 @@ function along(z0, z1, step, make) {
 }
 
 export const skyOpts = {
-  top: '#4f8fd0', mid: '#86b8e2', horizon: '#d4e4ec', midHeight: 0.33,
-  sunDir: [-0.45, 0.7, 0.55], sunColor: '#fff8e8', sunGlow: 0.25, sunGlow2: 1.1, sunSize: 0.026, sunIntensity: 3.0,
-  cloudCover: 0.14, cloudScale: 0.7, cloudSoft: 0.4, cloudColor: '#ffffff', cloudShade: '#c4d4e2', haze: 0.3,
+  top: '#2f74cc', mid: '#6fa8e0', horizon: '#bcd6ea', midHeight: 0.3,
+  sunDir: [-0.42, 0.66, 0.62], sunColor: '#fff6e0', sunGlow: 0.3, sunGlow2: 1.2, sunSize: 0.028, sunIntensity: 3.2,
+  cloudCover: 0.2, cloudScale: 0.6, cloudSoft: 0.35, cloudColor: '#ffffff', cloudShade: '#b8cce0', haze: 0.16,
 };
 
 export function build(ctx, def) {
@@ -74,13 +79,13 @@ export function build(ctx, def) {
   const rnd = mulberry32(2024);
 
   L.setupSky(skyOpts);
-  L.setupSun({ dir: skyOpts.sunDir, color: '#fff4e2', intensity: 3.4, area: 40, far: 240 });
-  L.setupHemi('#d2e4f2', '#8a969a', 1.05);
-  L.setupFogExp('#d0dee6', 0.00115);
-  L.envFromSky(0.85);
+  L.setupSun({ dir: skyOpts.sunDir, color: '#fff1da', intensity: 3.0, area: 44, far: 260 });
+  L.setupHemi('#cfe2f6', '#7c8a90', 0.95);
+  L.setupFogExp('#c2d8ea', 0.00062);
+  L.envFromSky(0.9);
 
   // ---------------------------------------------------------------- deck
-  const concrete = rep(concreteTexture('#e4e4de'), 0.5, 0.5);
+  const concrete = rep(concreteTexture('#dcdcd4'), 0.5, 0.5);
   const concMat = new THREE.MeshStandardMaterial({ map: concrete, roughness: 0.85 });
   const deck = new THREE.Mesh(along(Z0, Z1, 8, (len) => new THREE.BoxGeometry(HALF * 2, 1.6, len + 0.05).translate(0, -0.8, 0)), concMat);
   deck.receiveShadow = true;
@@ -138,11 +143,11 @@ export function build(ctx, def) {
       new THREE.BoxGeometry(0.9, 0.16, 0.36).translate(-sx * 2.6, 11.55, 0),
     ].map((g) => (g.index ? g.toNonIndexed() : g)));
   };
-  const lampMat = new THREE.MeshStandardMaterial({ color: '#f0f2f2', roughness: 0.4, metalness: 0.2 });
+  const lampMat = new THREE.MeshStandardMaterial({ color: '#cfd4d8', roughness: 0.45, metalness: 0.25 });
   const headMat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#fffdf4').multiplyScalar(1.6) });
   for (const sx of [-1, 1]) {
     const pts = [];
-    for (let z = Z0 - 4; z > Z1; z -= 22) pts.push(z);
+    for (let z = Z0 - 4 - (sx > 0 ? 9 : 0); z > END + 4; z -= 18) pts.push(z);
     const im = new THREE.InstancedMesh(lampGeo(sx), lampMat, pts.length);
     const heads = new THREE.InstancedMesh(new THREE.BoxGeometry(0.7, 0.05, 0.28).translate(-sx * 2.6, 11.45, 0), headMat, pts.length);
     const m = new THREE.Matrix4();
@@ -221,21 +226,40 @@ export function build(ctx, def) {
   }
   L.onUpdate((dt, t) => { const on = Math.sin(t * 4.5) > 0; blink.forEach((b) => b.material.color.setScalar(on ? 2.5 : 0.08).multiply(new THREE.Color('#ffa020'))); });
 
-  // ---------------------------------------------------------------- the gate building in the fog
+  // ---------------------------------------------------------------- the domed island building
   const yb = deckY(END);
-  const bMat = new THREE.MeshStandardMaterial({ color: '#e4e6e2', roughness: 0.7 });
-  const gate = [];
-  gate.push(new THREE.BoxGeometry(7, 16, 18).translate(-HALF - 2.5, yb + 8, END), new THREE.BoxGeometry(7, 16, 18).translate(HALF + 2.5, yb + 8, END));
-  gate.push(new THREE.BoxGeometry(HALF * 2 + 12, 5, 18).translate(0, yb + 18.5, END));
-  const dome = new THREE.SphereGeometry(10, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2);
-  dome.scale(1.6, 0.8, 1);
-  gate.push(dome.translate(0, yb + 21, END));
-  gate.push(new THREE.CylinderGeometry(0.15, 0.15, 6, 6).translate(0, yb + 32, END));
-  gate.push(new THREE.BoxGeometry(2.4, 10, 2.4).translate(0, yb + 5, END - 4));
+  const FRONT = END - 2.8;
+  const bMat = new THREE.MeshStandardMaterial({ color: '#eceee9', roughness: 0.62 });
+  const S = 1.9; // monumental, so it reads from the far end of the bridge
+  const gate = [
+    new THREE.BoxGeometry(64 * S, 12 * S, 40 * S).translate(0, yb + 6 * S, FRONT - 20 * S),
+    new THREE.BoxGeometry(44 * S, 4.5 * S, 32 * S).translate(0, yb + 14.25 * S, FRONT - 24 * S),
+    new THREE.BoxGeometry(22 * S, 7 * S, 36 * S).translate(-43 * S, yb + 3.5 * S, FRONT - 22 * S),
+    new THREE.BoxGeometry(22 * S, 7 * S, 36 * S).translate(43 * S, yb + 3.5 * S, FRONT - 22 * S),
+    new THREE.BoxGeometry(66 * S, 0.8 * S, 42 * S).translate(0, yb + 12.4 * S, FRONT - 20 * S),
+    new THREE.CylinderGeometry(0.3, 0.3, 9 * S, 6).translate(0, yb + 31 * S, FRONT - 24 * S),
+  ];
+  const dome = new THREE.SphereGeometry(13 * S, 40, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+  dome.scale(1.35, 0.85, 1);
+  gate.push(dome.translate(0, yb + 16.4 * S, FRONT - 24 * S));
   L.add(new THREE.Mesh(mergeGeometries(gate.map((g) => (g.index ? g.toNonIndexed() : g))), bMat));
-  L.collide(boxCollider(0, END - 4, 2.6, 2.6));
-  // the door is set into the central pillar of the gate
-  L.makeDoor({ color: '#e8f0f4', frameColor: '#ffffff', glow: '#fffaf0', style: 'panel', beacon: true }, 0, yb, END - 2.75, 0);
+  // dark tunnel mouths over both carriageways and a strip of glass
+  const dark = new THREE.MeshStandardMaterial({ color: '#16191c', roughness: 0.9 });
+  const glass = new THREE.MeshStandardMaterial({ color: '#2c3a44', roughness: 0.08, metalness: 0.6 });
+  for (const cx of [-7.4, 7.4]) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(10.4, 5.6), dark);
+    m.position.set(cx, yb + 2.8, FRONT + 0.02);
+    L.add(m);
+  }
+  const strip = new THREE.Mesh(new THREE.PlaneGeometry(60 * S, 1.3 * S), glass);
+  strip.position.set(0, yb + 9.2 * S, FRONT + 0.02);
+  L.add(strip);
+  // the artificial island it stands on (its front edge stays under the deck)
+  const IR = 62 * S;
+  const isl = new THREE.CylinderGeometry(IR, IR + 24, yb + 24.4, 48, 1);
+  isl.scale(1.25, 1, 1);
+  L.add(new THREE.Mesh(isl.translate(0, (yb - 24.4) / 2 - 0.15, FRONT + 26 - IR), new THREE.MeshStandardMaterial({ map: rep(concreteTexture('#c9c6b8'), 10, 10), roughness: 0.92 })));
+  L.makeDoor({ color: '#e8f0f4', frameColor: '#ffffff', glow: '#fffaf0', style: 'panel', beacon: true }, 0, yb, FRONT + 0.05, 0);
   L.makeDecoy({ color: '#d8dcdc', frameColor: '#ffffff' }, -HALF + 0.35, deckY(-380), -380, Math.PI / 2);
   L.makeDecoy({ color: '#d8dcdc', frameColor: '#ffffff' }, HALF - 0.35, deckY(-560), -560, -Math.PI / 2);
 

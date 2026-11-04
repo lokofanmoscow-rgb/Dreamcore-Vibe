@@ -11,8 +11,6 @@ export const TRACKS = {
   fogbridge: 'audio/fog_bridge.mp3',
   mall: 'audio/empty_mall.mp3',
   courtyard: 'audio/courtyard_night.mp3',
-  backrooms: 'audio/backrooms_hum.mp3',
-  retro: 'audio/retro_hills.mp3',
 };
 
 export class AudioSystem {

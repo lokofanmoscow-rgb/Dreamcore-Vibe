@@ -4,6 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 
 // Final "dream lens" pass: barrel distortion, chromatic fringe, grading, vignette, grain.
 const DreamShader = {
@@ -53,30 +54,39 @@ const DreamShader = {
       col.b = texture2D(tDiffuse, duv - dir).b;
 
       if (vhs > 0.0) {
-        // camcorder tape: soft luma, smeared and shifted chroma, line jitter,
-        // a slow tracking band and head-switching noise at the bottom
+        // A clean camcorder recording: full-res luma with a gentle tape
+        // softness, chroma at a fraction of the bandwidth that bleeds to the
+        // right, a faint line wobble, a rare thin tracking line and the
+        // head-switching ragged edge at the very bottom of the frame.
         vec2 px = 1.0 / resolution;
-        float line = floor(vUv.y * resolution.y / 2.0);
-        float jit = (hash(vec2(line, floor(time * 24.0))) - 0.5) * 1.6 * px.x;
-        float bandPos = fract(time * 0.035);
-        float band = 1.0 - smoothstep(0.0, 0.025, abs(vUv.y - bandPos));
-        float head = 1.0 - smoothstep(0.0, 0.022, vUv.y);
-        vec2 vu = duv + vec2(jit + band * (hash(vec2(line, time)) - 0.5) * 10.0 * px.x + head * 14.0 * px.x * (hash(vec2(line * 1.7, time)) - 0.2), 0.0);
+        float scan = vUv.y * resolution.y;
+        float line = floor(scan / 2.0);
+        float wob = sin(vUv.y * 9.0 + time * 1.3) * 0.35 + (hash(vec2(line, floor(time * 15.0))) - 0.5) * 0.7;
+        float bandPos = fract(time * 0.021 + 0.3);
+        float band = (1.0 - smoothstep(0.0, 0.006, abs(vUv.y - bandPos))) * step(0.55, fract(time * 0.021 * 3.0));
+        float head = 1.0 - smoothstep(0.0, 0.018, vUv.y);
+        float off = wob * px.x + band * (hash(vec2(line, time)) - 0.5) * 8.0 * px.x
+                  + head * 12.0 * px.x * (hash(vec2(line * 1.7, floor(time * 30.0))) - 0.2);
+        vec2 vu = duv + vec2(off, 0.0);
         vec3 a = texture2D(tDiffuse, vu).rgb;
-        vec3 b1 = texture2D(tDiffuse, vu + vec2(1.4 * px.x, 0.0)).rgb;
-        vec3 b2 = texture2D(tDiffuse, vu - vec2(1.4 * px.x, 0.0)).rgb;
-        float Y = dot(a * 0.5 + (b1 + b2) * 0.25, vec3(0.299, 0.587, 0.114));
+        vec3 b1 = texture2D(tDiffuse, vu + vec2(px.x, 0.0)).rgb;
+        vec3 b2 = texture2D(tDiffuse, vu - vec2(px.x, 0.0)).rgb;
+        vec3 lumaSrc = a * 0.6 + (b1 + b2) * 0.2;
+        float Y = dot(lumaSrc, vec3(0.299, 0.587, 0.114));
+        // light sharpening ring, the way camcorder enhancers draw edges
+        float Yb = dot((b1 + b2) * 0.5, vec3(0.299, 0.587, 0.114));
+        Y += (Y - Yb) * 0.35;
         vec3 cs = vec3(0.0);
-        for (int k = -3; k <= 3; k++) cs += texture2D(tDiffuse, vu + vec2((float(k) * 2.2 + 3.0) * px.x, 0.0)).rgb;
-        cs /= 7.0;
-        float I = dot(cs, vec3(0.596, -0.274, -0.322)) * 0.9;
-        float Q = dot(cs, vec3(0.211, -0.523, 0.312)) * 0.9;
-        float cn = (hash(vec2(line, floor(time * 30.0) + 3.0)) - 0.5) * 0.02;
+        for (int k = 0; k < 6; k++) cs += texture2D(tDiffuse, vu - vec2(float(k) * 1.6 * px.x, 0.0)).rgb;
+        cs /= 6.0;
+        float I = dot(cs, vec3(0.596, -0.274, -0.322));
+        float Q = dot(cs, vec3(0.211, -0.523, 0.312));
+        float cn = (hash(vec2(line, floor(time * 30.0) + 3.0)) - 0.5) * 0.012;
         vec3 v = vec3(Y + 0.956 * (I + cn) + 0.621 * Q, Y - 0.272 * (I + cn) - 0.647 * Q, Y - 1.106 * (I + cn) + 1.703 * Q);
-        v += (hash(gl_FragCoord.xy * 0.5 + time) - 0.5) * 0.035;
-        v += band * 0.05 + head * (hash(gl_FragCoord.xy + time * 3.0) - 0.4) * 0.25;
-        v = v * 0.9 + 0.035;                      // lifted blacks, softer whites
-        v *= 1.0 - 0.045 * (0.5 + 0.5 * sin(gl_FragCoord.y * 3.14159));
+        v += (hash(gl_FragCoord.xy * 0.5 + fract(time) * 91.0) - 0.5) * 0.018;
+        v += band * 0.08 + head * (hash(gl_FragCoord.xy + time * 3.0) - 0.4) * 0.18;
+        v = v * 0.955 + 0.018;                    // slightly lifted blacks, soft whites
+        v *= 1.0 - 0.018 * (0.5 + 0.5 * sin(scan * 3.14159));
         col = mix(col, v, vhs);
       }
 
@@ -178,6 +188,8 @@ export class Renderer {
       composer.addPass(this.bloomPass);
     }
     composer.addPass(new OutputPass());
+    // Without hardware MSAA, smooth the edges in display space (cheap FXAA).
+    if (!q.msaa) composer.addPass(new FXAAPass());
     this.dreamPass = new ShaderPass(DreamShader);
     composer.addPass(this.dreamPass);
     this.composer = composer;
